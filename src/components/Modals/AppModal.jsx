@@ -324,78 +324,249 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
                     </div>
                 </div>
             );
-            case 'rfq': return (
-                <div className="space-y-4">
-                    <h3 className="font-bold text-lg">{modal.isEdit ? 'Edit' : 'New'} RFQ</h3>
+            case 'rfq':
+                // --- HELPER: Determine Type & IDs safely ---
+                // Default to 'SKU' if undefined, or handle 'Other'
+                const currentType = (form.rfqType === 'Other') ? 'Other' : 'SKU';
+                const safeLinkedId = String(form.linkedId || '');
 
-                    {/* Type Selector */}
-                    <div className="p-3 bg-slate-50 rounded border border-slate-100">
-                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">What are you requesting?</label>
-                        <div className="flex gap-4">
-                            {['Product', 'SKU', 'Other'].map(type => (
-                                <label key={type} className="flex items-center gap-2 cursor-pointer">
-                                    <input
-                                        type="radio"
-                                        name="rfqType"
-                                        checked={(form.rfqType || 'Product') === type}
-                                        onChange={() => setForm({ ...form, rfqType: type, linkedId: '', customName: '' })}
-                                        className="text-blue-600 focus:ring-blue-500"
-                                    />
-                                    <span className="text-sm font-medium text-slate-700">{type}</span>
-                                </label>
-                            ))}
+                // --- HELPER: Find Formulation (Safety Checked) ---
+                // We use ?. to ensure we don't crash if data.formulations is loading
+                const activeFormulation = (data.formulations || []).find(f => String(f?.skuId) === safeLinkedId);
+
+                // --- HELPER: Get Related Item Name (Safe) ---
+                const getItemName = () => {
+                    try {
+                        if (currentType === 'SKU' && safeLinkedId) {
+                            const s = (skus || []).find(x => String(x.id) === safeLinkedId);
+                            if (!s) return 'Unknown SKU';
+
+                            const p = (products || []).find(x => x.id === s.productId);
+                            return p ? `${p.name} - ${s.variant}` : 'Unknown Product';
+                        }
+                        return form.customName || 'Custom Item';
+                    } catch (e) { return 'Item'; }
+                };
+
+                // --- HELPER: Filter Contacts ---
+                const companyContacts = (data.contacts || []).filter(c => c.companyId === form.companyId);
+
+                // --- HELPER: Generate Email Body (Crash Proof) ---
+                const generateBody = () => {
+                    try {
+                        const s = (skus || []).find(x => String(x.id) === safeLinkedId);
+                        const p = s ? (products || []).find(x => x.id === s.productId) : null;
+
+                        let body = `Dear ${form.emailToName || 'Partner'},\n\nI hope this email finds you well.\n\nWe are looking to procure the following item:\n`;
+
+                        if (currentType === 'SKU' && s && p) {
+                            // Standard Details (With fallbacks for everything)
+                            body += `\nProduct: ${p.name || '-'}`;
+                            body += `\nFormat: ${p.format || '-'}`;
+                            body += `\nVariant: ${s.variant || '-'}`;
+                            body += `\nFlavour: ${s.flavour || 'N/A'}`;
+                            body += `\nPack Size: ${s.packSize || ''}${s.unit || ''} ${s.packType || ''}`;
+
+                            // OPTIONAL: Formulation Table
+                            if (activeFormulation?.ingredients && Array.isArray(activeFormulation.ingredients)) {
+                                if (activeFormulation.ingredients.length > 0) {
+                                    body += `\n\nFORMULATION / ACTIVE INGREDIENTS:`;
+                                    body += `\n-------------------------------------------------------------`;
+                                    body += `\nIngredient Name       | Type       | Dosage`;
+                                    body += `\n-------------------------------------------------------------`;
+
+                                    activeFormulation.ingredients.forEach(ing => {
+                                        const name = (ing?.name || '').padEnd(22, ' ');
+                                        const type = (ing?.type || 'Active').padEnd(11, ' ');
+                                        const dosage = (ing?.perSku || ing?.perServing || ing?.per100g || '-');
+                                        body += `\n${name}| ${type}| ${dosage}`;
+                                    });
+                                    body += `\n-------------------------------------------------------------`;
+                                }
+                            }
+
+                            // OPTIONAL: Packaging List
+                            if (activeFormulation?.packaging && Array.isArray(activeFormulation.packaging)) {
+                                if (activeFormulation.packaging.length > 0) {
+                                    body += `\n\nPACKAGING REQUIREMENTS:`;
+                                    activeFormulation.packaging.forEach(pack => {
+                                        body += `\n- ${pack?.item || 'Item'}: ${pack?.qty || '-'}`;
+                                    });
+                                }
+                            }
+
+                        } else if (form.customDetails) {
+                            body += `\n\nItem: ${form.customName || ''}`;
+                            body += `\nSpecifications:\n${form.customDetails || ''}`;
+                        }
+
+                        // Common Footer
+                        body += `\n\nQuantity: ${form.qty || 'TBD'}`;
+                        body += `\nTarget Price: ${form.targetPrice ? formatMoney(form.targetPrice) : 'Best feasible'}`;
+                        body += `\n\nCould you please provide your best quote and lead time for this?`;
+                        body += `\n\nRFQ Ref: ${modal.data?.id ? modal.data.id.substr(0, 8) : 'New'}`;
+                        body += `\n\nBest regards,`;
+
+                        return body;
+                    } catch (error) {
+                        return "Error generating email preview. Please check item details.";
+                    }
+                };
+
+                const rfqSubject = `RFQ ${form.orderId || 'Request'}: Quote for ${getItemName()} - Biowearth`;
+                const rfqBody = generateBody();
+
+                return (
+                    <div className="space-y-4">
+                        <div className="flex justify-between items-center">
+                            <h3 className="font-bold text-lg">{modal.isEdit ? 'Edit' : 'New'} RFQ</h3>
+                            {modal.isEdit && modal.data?.id && <Badge color="blue">ID: {modal.data.id.substr(0, 8)}</Badge>}
                         </div>
-                    </div>
 
-                    {/* Conditional Inputs based on Type */}
-                    {(form.rfqType === 'Product' || !form.rfqType) && (
-                        <select className="w-full p-2 border rounded" value={form.linkedId || ''} onChange={e => setForm({ ...form, linkedId: e.target.value })}>
-                            <option value="">Select Product...</option>
-                            {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                        </select>
-                    )}
+                        {/* 1. SELECTION TYPE */}
+                        <div className="p-3 bg-slate-50 rounded border border-slate-100">
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Request Type</label>
+                            <div className="flex gap-4">
+                                {['SKU', 'Other'].map(type => (
+                                    <label key={type} className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="radio"
+                                            name="rfqType"
+                                            checked={currentType === type}
+                                            onChange={() => setForm({ ...form, rfqType: type, linkedId: '', customName: '' })}
+                                            className="text-blue-600 focus:ring-blue-500"
+                                        />
+                                        <span className="text-sm font-medium text-slate-700">{type === 'Other' ? 'Custom / Service' : 'Product SKU'}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
 
-                    {form.rfqType === 'SKU' && (
-                        <select className="w-full p-2 border rounded" value={form.linkedId || ''} onChange={e => setForm({ ...form, linkedId: e.target.value })}>
-                            <option value="">Select SKU...</option>
-                            {skus.map(s => {
-                                const p = products.find(x => x.id === s.productId);
-                                return <option key={s.id} value={s.id}>{p?.name} - {s.variant}</option>
-                            })}
-                        </select>
-                    )}
-
-                    {form.rfqType === 'Other' && (
+                        {/* 2. ITEM DETAILS */}
                         <div className="space-y-3">
-                            <input placeholder="Item / Service Name" className="w-full p-2 border rounded" value={form.customName || ''} onChange={e => setForm({ ...form, customName: e.target.value })} />
-                            <textarea placeholder="Detailed Specifications..." className="w-full p-2 border rounded h-20" value={form.customDetails || ''} onChange={e => setForm({ ...form, customDetails: e.target.value })} />
+                            {currentType === 'SKU' && (
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Select SKU</label>
+                                    <select
+                                        className="w-full p-2 border rounded font-medium text-slate-700"
+                                        value={form.linkedId || ''}
+                                        onChange={e => setForm({ ...form, linkedId: e.target.value })}
+                                    >
+                                        <option value="">Choose an SKU...</option>
+                                        {(skus || []).map(s => {
+                                            const p = (products || []).find(x => x.id === s.productId);
+                                            // Safe rendering even if product name is missing
+                                            return (
+                                                <option key={s.id} value={s.id}>
+                                                    {p?.name || 'Unknown'} - {s.variant} {s.flavour} ({s.packSize}{s.unit})
+                                                </option>
+                                            )
+                                        })}
+                                    </select>
+                                </div>
+                            )}
+
+                            {currentType === 'Other' && (
+                                <div className="space-y-2">
+                                    <input placeholder="Item Name / Service" className="w-full p-2 border rounded" value={form.customName || ''} onChange={e => setForm({ ...form, customName: e.target.value })} />
+                                    <textarea placeholder="Detailed Specs..." className="w-full p-2 border rounded h-16 text-xs" value={form.customDetails || ''} onChange={e => setForm({ ...form, customDetails: e.target.value })} />
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <input type="number" placeholder="Qty" className="p-2 border rounded" value={form.qty || ''} onChange={e => setForm({ ...form, qty: e.target.value })} />
+                                <input type="number" placeholder="Target Price" className="p-2 border rounded" value={form.targetPrice || ''} onChange={e => setForm({ ...form, targetPrice: e.target.value })} />
+                            </div>
                         </div>
-                    )}
 
-                    {/* Common Fields */}
-                    <div className="grid grid-cols-2 gap-4">
-                        <input type="number" placeholder="Quantity Required" className="p-2 border rounded" value={form.qty || ''} onChange={e => setForm({ ...form, qty: e.target.value })} />
-                        <input type="number" placeholder="Target Price" className="p-2 border rounded" value={form.targetPrice || ''} onChange={e => setForm({ ...form, targetPrice: e.target.value })} />
-                    </div>
+                        {/* 3. VENDOR & CONTACT SELECTION */}
+                        <div className="border-t border-slate-100 pt-4 space-y-3">
+                            <label className="block text-xs font-bold text-slate-500 uppercase">Recipient Details</label>
+                            <select className="w-full p-2 border rounded font-bold text-slate-700" value={form.companyId || ''} onChange={e => setForm({ ...form, companyId: e.target.value, emailTo: '', emailCc: [] })}>
+                                <option value="">Select Vendor/Client...</option>
+                                <optgroup label="Vendors">{vendors.map(v => <option key={v.id} value={v.id}>{v.companyName}</option>)}</optgroup>
+                                <optgroup label="Clients">{clients.map(c => <option key={c.id} value={c.id}>{c.companyName}</option>)}</optgroup>
+                            </select>
 
-                    <div className="grid grid-cols-2 gap-4">
-                        <select className="p-2 border rounded" value={form.companyId || ''} onChange={e => setForm({ ...form, companyId: e.target.value })}>
-                            <option value="">Select Vendor/Client...</option>
-                            <optgroup label="Vendors">
-                                {vendors.map(v => <option key={v.id} value={v.id}>{v.companyName}</option>)}
-                            </optgroup>
-                            <optgroup label="Clients">
-                                {clients.map(c => <option key={c.id} value={c.id}>{c.companyName}</option>)}
-                            </optgroup>
-                        </select>
-                        <select className="p-2 border rounded" value={form.status || 'Open'} onChange={e => setForm({ ...form, status: e.target.value })}>
-                            <option value="Open">Open</option>
-                            <option value="Sent">Sent</option>
-                            <option value="Closed">Closed</option>
-                        </select>
+                            {form.companyId && (
+                                <div className="grid grid-cols-2 gap-4 bg-blue-50/50 p-3 rounded border border-blue-100">
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-blue-500 uppercase mb-1">Email To</label>
+                                        <select
+                                            className="w-full p-1.5 text-sm border rounded"
+                                            value={form.emailTo || ''}
+                                            onChange={e => {
+                                                const c = companyContacts.find(x => x.email === e.target.value);
+                                                setForm({ ...form, emailTo: e.target.value, emailToName: c?.name });
+                                            }}
+                                        >
+                                            <option value="">Select Contact...</option>
+                                            {companyContacts.map(c => <option key={c.id} value={c.email}>{c.name} ({c.email})</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-blue-500 uppercase mb-1">CC (Hold Cmd/Ctrl to Select)</label>
+                                        <select
+                                            multiple
+                                            className="w-full p-1.5 text-sm border rounded h-20"
+                                            value={form.emailCc || []}
+                                            onChange={e => setForm({ ...form, emailCc: Array.from(e.target.selectedOptions, o => o.value) })}
+                                        >
+                                            {companyContacts.filter(c => c.email !== form.emailTo).map(c => <option key={c.id} value={c.email}>{c.name}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* 4. EMAIL GENERATOR PREVIEW */}
+                        {form.companyId && (
+                            <div className="border-t border-slate-100 pt-4">
+                                <label className="flex justify-between items-center text-xs font-bold text-slate-500 uppercase mb-2">
+                                    <span>Generated Email Preview</span>
+                                    <span className="text-[10px] font-normal text-slate-400">Copy-paste to your email client</span>
+                                </label>
+                                <div className="bg-slate-800 text-slate-200 rounded-lg p-3 text-xs font-mono space-y-3">
+                                    {/* TO / CC Section */}
+                                    <div className="pb-2 border-b border-slate-700">
+                                        <div className="flex gap-2 mb-1">
+                                            <span className="text-slate-500 w-8">To:</span>
+                                            <span className="text-white select-all">{form.emailTo || '...'}</span>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <span className="text-slate-500 w-8">CC:</span>
+                                            {/* SAFETY: Check if emailCc is array before join */}
+                                            <span className="text-slate-400 select-all">{Array.isArray(form.emailCc) ? form.emailCc.join('; ') : ''}</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Subject Line */}
+                                    <div className="flex gap-2 items-center group">
+                                        <span className="text-slate-500 w-8 shrink-0">Sub:</span>
+                                        <div className="flex-1 text-yellow-400 select-all whitespace-nowrap overflow-x-auto">{rfqSubject}</div>
+                                        <button onClick={() => navigator.clipboard.writeText(rfqSubject)} className="opacity-0 group-hover:opacity-100 px-2 py-0.5 bg-slate-700 hover:bg-white hover:text-slate-900 rounded text-[10px] transition-all">Copy</button>
+                                    </div>
+
+                                    {/* Body */}
+                                    <div className="relative group pt-2 border-t border-slate-700">
+                                        <div className="whitespace-pre-wrap select-all">{rfqBody}</div>
+                                        <button onClick={() => navigator.clipboard.writeText(rfqBody)} className="absolute top-2 right-0 opacity-0 group-hover:opacity-100 px-2 py-0.5 bg-slate-700 hover:bg-white hover:text-slate-900 rounded text-[10px] transition-all">Copy Body</button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Status for saving */}
+                        <div className="text-right pt-2">
+                            <label className="text-xs text-slate-400 mr-2">Internal Status:</label>
+                            <select className="p-1 border rounded text-xs" value={form.status || 'Open'} onChange={e => setForm({ ...form, status: e.target.value })}>
+                                <option value="Open">Open</option>
+                                <option value="Sent">Sent</option>
+                                <option value="Closed">Closed</option>
+                            </select>
+                        </div>
                     </div>
-                </div>
-            );
+                );
             case 'user': return (<div className="space-y-4"><h3 className="font-bold text-lg">{modal.isEdit ? 'Edit' : 'Add'} User</h3><input placeholder="Full Name" className="w-full p-2 border rounded" value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /><input placeholder="Username" className="w-full p-2 border rounded" value={form.username || ''} onChange={e => setForm({ ...form, username: e.target.value })} /><input placeholder="Password" type="password" className="w-full p-2 border rounded" value={form.password || ''} onChange={e => setForm({ ...form, password: e.target.value })} /><select className="w-full p-2 border rounded" value={form.role || ''} onChange={e => setForm({ ...form, role: e.target.value })}><option value="Staff">Staff</option><option value="Admin">Admin</option></select></div>);
             default: return null;
         }

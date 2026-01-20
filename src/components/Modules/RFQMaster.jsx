@@ -8,16 +8,23 @@ export const RFQMaster = ({ data, actions, setModal }) => {
     const { rfqs, products, skus, vendors, clients } = data;
     const [filterType, setFilterType] = useState('All');
 
-    const getRelatedName = (rfq) => {
-        if (rfq.rfqType === 'Product') {
-            const p = products.find(x => x.id === rfq.linkedId);
-            return p ? p.name : 'Unknown Product';
-        } else if (rfq.rfqType === 'SKU') {
-            const s = skus.find(x => x.id === rfq.linkedId);
+    // HELPER: Get Clean SKU Details for Table (Robust Fix)
+    const getRelatedDetails = (rfq) => {
+        // If it has a linkedId, treat it as an SKU lookup
+        if (rfq.linkedId && rfq.rfqType !== 'Other') {
+            const s = skus.find(x => String(x.id) === String(rfq.linkedId));
             const p = products.find(x => x.id === s?.productId);
-            return s ? `${p?.name} (${s.variant})` : 'Unknown SKU';
+
+            if (!s || !p) return { title: 'Unknown SKU', subtitle: 'Item details missing' };
+
+            // Title: "Whey Protein - Isolate Chocolate"
+            const title = `${p.name} - ${s.variant} ${s.flavour || ''}`;
+            // Subtitle: "Format: Powder • Pack: 1kg Jar"
+            const subtitle = `Format: ${p.format || '-'} • Pack: ${s.packSize}${s.unit} ${s.packType}`;
+            return { title, subtitle };
         } else {
-            return rfq.customName || 'Custom Item';
+            // Fallback for Custom Items
+            return { title: rfq.customName || 'Custom Item', subtitle: rfq.customDetails || '-' };
         }
     };
 
@@ -40,7 +47,6 @@ export const RFQMaster = ({ data, actions, setModal }) => {
                 <div className="flex gap-2">
                     <select className="text-sm border rounded p-2" value={filterType} onChange={e => setFilterType(e.target.value)}>
                         <option value="All">All Types</option>
-                        <option value="Product">Product RFQs</option>
                         <option value="SKU">SKU RFQs</option>
                         <option value="Other">Custom RFQs</option>
                     </select>
@@ -62,30 +68,33 @@ export const RFQMaster = ({ data, actions, setModal }) => {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-sm">
-                        {filteredRfqs.map(rfq => (
-                            <tr key={rfq.id} className="hover:bg-slate-50">
-                                <td className="p-4 text-slate-500">{formatDate(rfq.createdAt)}</td>
-                                <td className="p-4">
-                                    <Badge color={rfq.rfqType === 'Other' ? 'purple' : 'blue'}>{rfq.rfqType}</Badge>
-                                </td>
-                                <td className="p-4">
-                                    <div className="font-bold text-slate-800">{getRelatedName(rfq)}</div>
-                                    {rfq.rfqType === 'Other' && <div className="text-xs text-slate-500">{rfq.customDetails}</div>}
-                                </td>
-                                <td className="p-4 font-medium text-slate-600">{getCompanyName(rfq.companyId)}</td>
-                                <td className="p-4">
-                                    <div className="text-slate-800">{rfq.qty} units</div>
-                                    {rfq.targetPrice && <div className="text-xs text-slate-400">Target: {formatMoney(rfq.targetPrice)}</div>}
-                                </td>
-                                <td className="p-4">
-                                    <Badge color={rfq.status === 'Open' ? 'green' : 'slate'}>{rfq.status || 'Open'}</Badge>
-                                </td>
-                                <td className="p-4 text-right flex justify-end gap-2">
-                                    <button onClick={() => setModal({ open: true, type: 'rfq', data: rfq, isEdit: true })} className="p-1 text-slate-400 hover:text-blue-600"><Icons.Edit className="w-4 h-4" /></button>
-                                    <button onClick={() => actions.del('rfqs', rfq.id)} className="p-1 text-slate-400 hover:text-red-600"><Icons.Trash className="w-4 h-4" /></button>
-                                </td>
-                            </tr>
-                        ))}
+                        {filteredRfqs.map(rfq => {
+                            const details = getRelatedDetails(rfq);
+                            return (
+                                <tr key={rfq.id} className="hover:bg-slate-50">
+                                    <td className="p-4 text-slate-500">{formatDate(rfq.createdAt)}</td>
+                                    <td className="p-4">
+                                        <Badge color={rfq.rfqType === 'Other' ? 'purple' : 'blue'}>{rfq.rfqType || 'SKU'}</Badge>
+                                    </td>
+                                    <td className="p-4">
+                                        <div className="font-bold text-slate-800">{details.title}</div>
+                                        <div className="text-xs text-slate-500">{details.subtitle}</div>
+                                    </td>
+                                    <td className="p-4 font-medium text-slate-600">{getCompanyName(rfq.companyId)}</td>
+                                    <td className="p-4">
+                                        <div className="text-slate-800">{rfq.qty} units</div>
+                                        {rfq.targetPrice && <div className="text-xs text-slate-400">Target: {formatMoney(rfq.targetPrice)}</div>}
+                                    </td>
+                                    <td className="p-4">
+                                        <Badge color={rfq.status === 'Open' ? 'green' : 'slate'}>{rfq.status || 'Open'}</Badge>
+                                    </td>
+                                    <td className="p-4 text-right flex justify-end gap-2">
+                                        <button onClick={() => setModal({ open: true, type: 'rfq', data: rfq, isEdit: true })} className="p-1 text-slate-400 hover:text-blue-600"><Icons.Edit className="w-4 h-4" /></button>
+                                        <button onClick={() => actions.del('rfqs', rfq.id)} className="p-1 text-slate-400 hover:text-red-600"><Icons.Trash className="w-4 h-4" /></button>
+                                    </td>
+                                </tr>
+                            );
+                        })}
                         {filteredRfqs.length === 0 && (
                             <tr><td colSpan="7" className="p-8 text-center text-slate-400 italic">No RFQs found.</td></tr>
                         )}
