@@ -7,10 +7,10 @@ export const useBiowearthData = () => {
     const [loading, setLoading] = useState(true);
     const [currentUser, setCurrentUser] = useState(null);
 
-    // Data State
+    // Data State (Added 'formulations' here)
     const [data, setData] = useState({
         products: [], skus: [], vendors: [], clients: [], contacts: [],
-        quotesReceived: [], quotesSent: [], tasks: [], orders: [],
+        quotesReceived: [], quotesSent: [], tasks: [], orders: [], formulations: [],
         userProfiles: [], settings: {}
     });
 
@@ -38,10 +38,12 @@ export const useBiowearthData = () => {
                     onSnapshot(collection(db, path, 'quotesSent'), s => setData(p => ({ ...p, quotesSent: s.docs.map(d => ({ id: d.id, ...d.data() })) }))),
                     onSnapshot(collection(db, path, 'tasks'), s => setData(p => ({ ...p, tasks: s.docs.map(d => ({ id: d.id, ...d.data() })) }))),
                     onSnapshot(collection(db, path, 'orders'), s => setData(p => ({ ...p, orders: s.docs.map(d => ({ id: d.id, ...d.data() })) }))),
+                    // NEW LISTENER ADDED BELOW
+                    onSnapshot(collection(db, path, 'formulations'), s => setData(p => ({ ...p, formulations: s.docs.map(d => ({ id: d.id, ...d.data() })) }))),
+
                     onSnapshot(collection(db, path, 'users'), s => {
                         const users = s.docs.map(d => ({ id: d.id, ...d.data() }));
                         setData(p => ({ ...p, userProfiles: users }));
-                        // Create default admin if empty
                         if (users.length === 0) {
                             addDoc(collection(db, path, 'users'), { name: 'System Admin', username: 'admin', password: 'password123', role: 'Admin', createdAt: serverTimestamp() });
                         }
@@ -53,7 +55,6 @@ export const useBiowearthData = () => {
                             newSettings[d.id] = d.data().list || [];
                             hasData = true;
                         });
-                        // Default Settings Init
                         if (!hasData) {
                             const defaults = {
                                 formats: ['Powder', 'Liquid', 'Tablet', 'Capsule', 'Gummy', 'Sachet'],

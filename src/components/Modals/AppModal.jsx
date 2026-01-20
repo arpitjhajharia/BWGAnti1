@@ -19,7 +19,7 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
         }
     }, [modal.type, modal.isEdit, form.contextType]);
 
-    // Order Calculations (Auto-calculate Total from Qty, Rate, Tax)
+    // Order Calculations
     useEffect(() => {
         if (modal.type === 'order') {
             const qty = parseFloat(form.qty) || 0;
@@ -41,7 +41,7 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
         }
     }, [form.variant, form.packSize, form.unit, form.packType, form.flavour, modal.type, modal.isEdit]);
 
-    // Filter SKUs for Vendor Orders (Only show SKUs the vendor has quoted)
+    // Filter SKUs for Vendor Orders
     const isVendorOrder = vendors.some(v => v.id === form.companyId);
     const availableSkus = useMemo(() => {
         if (modal.type === 'order' && isVendorOrder) {
@@ -53,7 +53,7 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
     // --- HANDLERS ---
 
     const submit = async () => {
-        const map = { product: 'products', sku: 'skus', vendor: 'vendors', client: 'clients', contact: 'contacts', quoteReceived: 'quotesReceived', quoteSent: 'quotesSent', task: 'tasks', user: 'users', order: 'orders' };
+        const map = { product: 'products', sku: 'skus', vendor: 'vendors', client: 'clients', contact: 'contacts', quoteReceived: 'quotesReceived', quoteSent: 'quotesSent', task: 'tasks', user: 'users', order: 'orders', formulation: 'formulations' };
         const col = map[modal.type];
 
         // Task Linking Logic
@@ -83,23 +83,37 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
         }
     };
 
+    // Dynamic Row Handlers (For Formulation)
+    const handleArrayAdd = (field, emptyObj) => {
+        const current = form[field] || [];
+        setForm({ ...form, [field]: [...current, emptyObj] });
+    };
+    const handleArrayChange = (field, idx, subField, val) => {
+        const current = [...(form[field] || [])];
+        current[idx][subField] = val;
+        setForm({ ...form, [field]: current });
+    };
+    const handleArrayDel = (field, idx) => {
+        const current = [...(form[field] || [])];
+        current.splice(idx, 1);
+        setForm({ ...form, [field]: current });
+    };
+
+    // Payment Terms Handlers
     const handlePaymentTermAdd = () => {
         const currentTerms = form.paymentTerms || [];
         setForm({ ...form, paymentTerms: [...currentTerms, { label: '', percent: 0, status: 'Pending' }] });
     };
-
     const handlePaymentTermChange = (idx, field, value) => {
         const newTerms = [...(form.paymentTerms || [])];
         newTerms[idx][field] = value;
         setForm({ ...form, paymentTerms: newTerms });
     };
-
     const handlePaymentTermDelete = (idx) => {
         const newTerms = [...(form.paymentTerms || [])];
         newTerms.splice(idx, 1);
         setForm({ ...form, paymentTerms: newTerms });
     };
-
     const handleRequiredDocToggle = (docName) => {
         const currentDocs = form.docRequirements || {};
         if (currentDocs[docName]) {
@@ -189,6 +203,71 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
                         </div>
                     </div>
                 );
+            case 'formulation': return (
+                <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+                    <h3 className="font-bold text-lg">{modal.isEdit ? 'Edit' : 'New'} Formulation</h3>
+
+                    {/* Header Info */}
+                    <div className="space-y-3 p-3 bg-slate-50 rounded border border-slate-100">
+                        <label className="block text-xs font-bold text-slate-500 uppercase">Linked SKU</label>
+                        <select className="w-full p-2 border rounded bg-white" value={form.skuId || ''} onChange={e => setForm({ ...form, skuId: e.target.value })}>
+                            <option value="">Select SKU...</option>
+                            {skus.map(s => {
+                                const p = products.find(x => x.id === s.productId);
+                                return <option key={s.id} value={s.id}>{p?.name} ({s.variant})</option>
+                            })}
+                        </select>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Serving Size</label>
+                                <input placeholder="e.g. 30g" className="w-full p-2 border rounded" value={form.servingSize || ''} onChange={e => setForm({ ...form, servingSize: e.target.value })} />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Batch Size (Ref)</label>
+                                <input placeholder="e.g. 100kg" className="w-full p-2 border rounded" value={form.batchSize || ''} onChange={e => setForm({ ...form, batchSize: e.target.value })} />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Ingredients Section */}
+                    <div>
+                        <div className="flex justify-between items-center mb-2 border-b border-slate-100 pb-1">
+                            <h4 className="font-bold text-slate-700 text-sm">Ingredients</h4>
+                            <button onClick={() => handleArrayAdd('ingredients', { name: '', per100g: '', perServing: '' })} className="text-xs text-blue-600 hover:underline">+ Add Ingredient</button>
+                        </div>
+                        <div className="space-y-2">
+                            {(form.ingredients || []).map((ing, i) => (
+                                <div key={i} className="flex gap-2 items-center">
+                                    <input placeholder="Ingredient Name" className="text-xs p-2 border rounded flex-[2]" value={ing.name} onChange={e => handleArrayChange('ingredients', i, 'name', e.target.value)} />
+                                    <input placeholder="Dosage/100g" className="text-xs p-2 border rounded flex-1" value={ing.per100g} onChange={e => handleArrayChange('ingredients', i, 'per100g', e.target.value)} />
+                                    <input placeholder="Dosage/Serv" className="text-xs p-2 border rounded flex-1" value={ing.perServing} onChange={e => handleArrayChange('ingredients', i, 'perServing', e.target.value)} />
+                                    <button onClick={() => handleArrayDel('ingredients', i)} className="text-slate-400 hover:text-red-500"><Icons.X className="w-4 h-4" /></button>
+                                </div>
+                            ))}
+                            {(form.ingredients?.length === 0 || !form.ingredients) && <div className="text-xs text-slate-400 italic p-2 bg-slate-50 rounded">No ingredients added yet.</div>}
+                        </div>
+                    </div>
+
+                    {/* Packaging Section */}
+                    <div>
+                        <div className="flex justify-between items-center mb-2 border-b border-slate-100 pb-1">
+                            <h4 className="font-bold text-slate-700 text-sm">Packaging Materials</h4>
+                            <button onClick={() => handleArrayAdd('packaging', { item: '', qty: '' })} className="text-xs text-blue-600 hover:underline">+ Add Material</button>
+                        </div>
+                        <div className="space-y-2">
+                            {(form.packaging || []).map((pack, i) => (
+                                <div key={i} className="flex gap-2 items-center">
+                                    <input placeholder="Item Name (e.g. Jar, Scoop)" className="text-xs p-2 border rounded flex-[3]" value={pack.item} onChange={e => handleArrayChange('packaging', i, 'item', e.target.value)} />
+                                    <input placeholder="Qty" className="text-xs p-2 border rounded flex-1" value={pack.qty} onChange={e => handleArrayChange('packaging', i, 'qty', e.target.value)} />
+                                    <button onClick={() => handleArrayDel('packaging', i)} className="text-slate-400 hover:text-red-500"><Icons.X className="w-4 h-4" /></button>
+                                </div>
+                            ))}
+                            {(form.packaging?.length === 0 || !form.packaging) && <div className="text-xs text-slate-400 italic p-2 bg-slate-50 rounded">No packaging materials added yet.</div>}
+                        </div>
+                    </div>
+                </div>
+            );
             case 'user': return (<div className="space-y-4"><h3 className="font-bold text-lg">{modal.isEdit ? 'Edit' : 'Add'} User</h3><input placeholder="Full Name" className="w-full p-2 border rounded" value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /><input placeholder="Username" className="w-full p-2 border rounded" value={form.username || ''} onChange={e => setForm({ ...form, username: e.target.value })} /><input placeholder="Password" type="password" className="w-full p-2 border rounded" value={form.password || ''} onChange={e => setForm({ ...form, password: e.target.value })} /><select className="w-full p-2 border rounded" value={form.role || ''} onChange={e => setForm({ ...form, role: e.target.value })}><option value="Staff">Staff</option><option value="Admin">Admin</option></select></div>);
             default: return null;
         }
