@@ -11,6 +11,7 @@ import { CompanyMaster } from './components/modules/CompanyMaster';
 import { QuotesTab } from './components/modules/QuotesTab';
 import { TaskBoard } from './components/modules/TaskBoard';
 import { AdminPanel } from './components/modules/AdminPanel';
+import { RFQMaster } from './components/modules/RFQMaster';
 
 // Modals
 import { AppModal } from './components/modals/AppModal';
@@ -26,12 +27,15 @@ function App() {
   const [modal, setModal] = useState({ open: false, type: null, data: null, isEdit: false });
   const [detailView, setDetailView] = useState({ open: false, type: null, data: null });
   const [activeQuotesView, setActiveQuotesView] = useState({ open: false, productId: null });
+  // NEW STATE: Tracks which formulation to auto-expand
+  const [targetFormulationId, setTargetFormulationId] = useState(null);
 
   if (loading) return <div className="h-screen flex items-center justify-center text-slate-400">Loading Biowearth OS...</div>;
   if (!currentUser) return <LoginScreen userProfiles={data.userProfiles} onLogin={setCurrentUser} />;
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Icons.Dashboard },
+    { id: 'rfqs', label: 'RFQs', icon: Icons.Mail },
     { id: 'products', label: 'Products', icon: Icons.Product },
     { id: 'formulations', label: 'Formulations', icon: Icons.List }, // <--- New Menu Item
     { id: 'vendors', label: 'Vendors', icon: Icons.Factory },
@@ -47,6 +51,21 @@ function App() {
   const handleNavClick = (id) => {
     setActiveTab(id);
     setIsSidebarOpen(false);
+    setTargetFormulationId(null); // Reset target when manually clicking menu
+  };
+
+  // NEW FUNCTION: Handles jumping from SKU to Formulation
+  const handleFormulationNavigation = (skuId) => {
+    const found = data.formulations.find(f => f.skuId === skuId);
+    if (found) {
+      setTargetFormulationId(found.id);
+      setActiveTab('formulations');
+    } else {
+      if (confirm("No formulation found for this SKU. Create one now?")) {
+        setActiveTab('formulations');
+        setModal({ open: true, type: 'formulation', data: { skuId } });
+      }
+    }
   };
 
   return (
@@ -126,10 +145,9 @@ function App() {
       <main className="flex-1 pt-20 pb-6 px-4 lg:px-8 transition-all duration-300">
         <div className="max-w-7xl mx-auto animate-fade-in">
           {activeTab === 'dashboard' && <DashboardOverview data={data} actions={actions} setActiveTab={setActiveTab} />}
-          {activeTab === 'products' && <ProductMaster data={data} actions={actions} setModal={setModal} setActiveQuotesView={setActiveQuotesView} />}
-
-          {/* NEW MODULE RENDERED HERE */}
-          {activeTab === 'formulations' && <Formulations data={data} actions={actions} setModal={setModal} />}
+          {activeTab === 'rfqs' && <RFQMaster data={data} actions={actions} setModal={setModal} />}
+          {activeTab === 'products' && <ProductMaster data={data} actions={actions} setModal={setModal} setActiveQuotesView={setActiveQuotesView} onNavigateToFormulation={handleFormulationNavigation} />}
+          {activeTab === 'formulations' && <Formulations data={data} actions={actions} setModal={setModal} targetFormulationId={targetFormulationId} />}
 
           {activeTab === 'vendors' && <CompanyMaster type="vendor" data={data} actions={actions} setModal={setModal} setDetailView={setDetailView} />}
           {activeTab === 'clients' && <CompanyMaster type="client" data={data} actions={actions} setModal={setModal} setDetailView={setDetailView} />}

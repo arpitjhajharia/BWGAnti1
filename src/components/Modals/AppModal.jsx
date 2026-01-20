@@ -9,6 +9,28 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
 
     const { products, skus, vendors, clients, userProfiles, quotesReceived, settings } = data;
     const [form, setForm] = useState(modal.data || {});
+    // --- NEW FIX: Initialize Defaults for Dropdowns ---
+    useEffect(() => {
+        if (modal.open && !modal.isEdit) {
+            if (modal.type === 'sku') {
+                setForm(prev => ({
+                    ...prev,
+                    unit: prev.unit || settings?.units?.[0] || 'kg',
+                    packType: prev.packType || settings?.packTypes?.[0] || 'Bag',
+                    variant: prev.variant || '',
+                    flavour: prev.flavour || '',
+                    packSize: prev.packSize || ''
+                }));
+            }
+            if (modal.type === 'formulation') {
+                setForm(prev => ({
+                    ...prev,
+                    ingredients: prev.ingredients || [],
+                    packaging: prev.packaging || []
+                }));
+            }
+        }
+    }, [modal.open, modal.type, modal.isEdit, settings]);
 
     // --- AUTOMATIONS & CALCULATIONS ---
 
@@ -33,13 +55,29 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
     }, [form.qty, form.rate, form.taxRate, modal.type]);
 
     // Auto-generate SKU Code
+    // Auto-generate SKU Code (Updated)
     useEffect(() => {
         if (modal.type === 'sku' && !modal.isEdit) {
-            const { productName = 'PROD', variant = 'VAR', packSize = '1', unit = 'KG', packType = 'BOX', flavour = 'PLAIN' } = form;
-            const skuCode = `${productName}-${variant}-${packSize}${unit}-${packType}-${flavour}`.toUpperCase().replace(/\s+/g, '-');
-            setForm(f => ({ ...f, name: skuCode }));
+            const {
+                productName = 'PROD',
+                variant = '',
+                packSize = '',
+                unit = settings?.units?.[0] || 'kg',
+                packType = settings?.packTypes?.[0] || 'Bag',
+                flavour = ''
+            } = form;
+
+            const skuCode = `${productName}-${variant}-${packSize}${unit}-${packType}-${flavour}`
+                .toUpperCase()
+                .replace(/-+/g, '-')
+                .replace(/-$/, '');
+
+            setForm(f => {
+                if (f.name === skuCode) return f;
+                return { ...f, name: skuCode };
+            });
         }
-    }, [form.variant, form.packSize, form.unit, form.packType, form.flavour, modal.type, modal.isEdit]);
+    }, [form.variant, form.packSize, form.unit, form.packType, form.flavour, modal.type, modal.isEdit, settings]);
 
     // Filter SKUs for Vendor Orders
     const isVendorOrder = vendors.some(v => v.id === form.companyId);
@@ -53,7 +91,7 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
     // --- HANDLERS ---
 
     const submit = async () => {
-        const map = { product: 'products', sku: 'skus', vendor: 'vendors', client: 'clients', contact: 'contacts', quoteReceived: 'quotesReceived', quoteSent: 'quotesSent', task: 'tasks', user: 'users', order: 'orders', formulation: 'formulations' };
+        const map = { product: 'products', sku: 'skus', vendor: 'vendors', client: 'clients', contact: 'contacts', quoteReceived: 'quotesReceived', quoteSent: 'quotesSent', task: 'tasks', user: 'users', order: 'orders', formulation: 'formulations', rfq: 'rfqs' };
         const col = map[modal.type];
 
         // Task Linking Logic
@@ -234,14 +272,33 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
                     <div>
                         <div className="flex justify-between items-center mb-2 border-b border-slate-100 pb-1">
                             <h4 className="font-bold text-slate-700 text-sm">Ingredients</h4>
-                            <button onClick={() => handleArrayAdd('ingredients', { name: '', per100g: '', perServing: '' })} className="text-xs text-blue-600 hover:underline">+ Add Ingredient</button>
+                            {/* Updated Add Button to include new fields */}
+                            <button onClick={() => handleArrayAdd('ingredients', { name: '', type: 'Active', per100g: '', perServing: '', perSku: '' })} className="text-xs text-blue-600 hover:underline">+ Add Ingredient</button>
                         </div>
                         <div className="space-y-2">
+                            <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">
+                                <div>Name</div>
+                                <div>Type</div>
+                                <div>/100g</div>
+                                <div>/Serv</div>
+                                <div>/SKU</div>
+                                <div></div>
+                            </div>
                             {(form.ingredients || []).map((ing, i) => (
-                                <div key={i} className="flex gap-2 items-center">
-                                    <input placeholder="Ingredient Name" className="text-xs p-2 border rounded flex-[2]" value={ing.name} onChange={e => handleArrayChange('ingredients', i, 'name', e.target.value)} />
-                                    <input placeholder="Dosage/100g" className="text-xs p-2 border rounded flex-1" value={ing.per100g} onChange={e => handleArrayChange('ingredients', i, 'per100g', e.target.value)} />
-                                    <input placeholder="Dosage/Serv" className="text-xs p-2 border rounded flex-1" value={ing.perServing} onChange={e => handleArrayChange('ingredients', i, 'perServing', e.target.value)} />
+                                <div key={i} className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] gap-2 items-center">
+                                    <input placeholder="Name" className="text-xs p-2 border rounded" value={ing.name} onChange={e => handleArrayChange('ingredients', i, 'name', e.target.value)} />
+
+                                    {/* Type Selector */}
+                                    <select className="text-xs p-2 border rounded bg-white" value={ing.type || 'Active'} onChange={e => handleArrayChange('ingredients', i, 'type', e.target.value)}>
+                                        <option value="Active">Active</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+
+                                    <input placeholder="0" type="number" step="any" className="text-xs p-2 border rounded" value={ing.per100g} onChange={e => handleArrayChange('ingredients', i, 'per100g', e.target.value)} />
+                                    <input placeholder="0" type="number" step="any" className="text-xs p-2 border rounded" value={ing.perServing} onChange={e => handleArrayChange('ingredients', i, 'perServing', e.target.value)} />
+                                    {/* New Dosage Per SKU Field */}
+                                    <input placeholder="0" type="number" step="any" className="text-xs p-2 border rounded" value={ing.perSku} onChange={e => handleArrayChange('ingredients', i, 'perSku', e.target.value)} />
+
                                     <button onClick={() => handleArrayDel('ingredients', i)} className="text-slate-400 hover:text-red-500"><Icons.X className="w-4 h-4" /></button>
                                 </div>
                             ))}
@@ -263,8 +320,79 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
                                     <button onClick={() => handleArrayDel('packaging', i)} className="text-slate-400 hover:text-red-500"><Icons.X className="w-4 h-4" /></button>
                                 </div>
                             ))}
-                            {(form.packaging?.length === 0 || !form.packaging) && <div className="text-xs text-slate-400 italic p-2 bg-slate-50 rounded">No packaging materials added yet.</div>}
                         </div>
+                    </div>
+                </div>
+            );
+            case 'rfq': return (
+                <div className="space-y-4">
+                    <h3 className="font-bold text-lg">{modal.isEdit ? 'Edit' : 'New'} RFQ</h3>
+
+                    {/* Type Selector */}
+                    <div className="p-3 bg-slate-50 rounded border border-slate-100">
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">What are you requesting?</label>
+                        <div className="flex gap-4">
+                            {['Product', 'SKU', 'Other'].map(type => (
+                                <label key={type} className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="radio"
+                                        name="rfqType"
+                                        checked={(form.rfqType || 'Product') === type}
+                                        onChange={() => setForm({ ...form, rfqType: type, linkedId: '', customName: '' })}
+                                        className="text-blue-600 focus:ring-blue-500"
+                                    />
+                                    <span className="text-sm font-medium text-slate-700">{type}</span>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Conditional Inputs based on Type */}
+                    {(form.rfqType === 'Product' || !form.rfqType) && (
+                        <select className="w-full p-2 border rounded" value={form.linkedId || ''} onChange={e => setForm({ ...form, linkedId: e.target.value })}>
+                            <option value="">Select Product...</option>
+                            {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                    )}
+
+                    {form.rfqType === 'SKU' && (
+                        <select className="w-full p-2 border rounded" value={form.linkedId || ''} onChange={e => setForm({ ...form, linkedId: e.target.value })}>
+                            <option value="">Select SKU...</option>
+                            {skus.map(s => {
+                                const p = products.find(x => x.id === s.productId);
+                                return <option key={s.id} value={s.id}>{p?.name} - {s.variant}</option>
+                            })}
+                        </select>
+                    )}
+
+                    {form.rfqType === 'Other' && (
+                        <div className="space-y-3">
+                            <input placeholder="Item / Service Name" className="w-full p-2 border rounded" value={form.customName || ''} onChange={e => setForm({ ...form, customName: e.target.value })} />
+                            <textarea placeholder="Detailed Specifications..." className="w-full p-2 border rounded h-20" value={form.customDetails || ''} onChange={e => setForm({ ...form, customDetails: e.target.value })} />
+                        </div>
+                    )}
+
+                    {/* Common Fields */}
+                    <div className="grid grid-cols-2 gap-4">
+                        <input type="number" placeholder="Quantity Required" className="p-2 border rounded" value={form.qty || ''} onChange={e => setForm({ ...form, qty: e.target.value })} />
+                        <input type="number" placeholder="Target Price" className="p-2 border rounded" value={form.targetPrice || ''} onChange={e => setForm({ ...form, targetPrice: e.target.value })} />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <select className="p-2 border rounded" value={form.companyId || ''} onChange={e => setForm({ ...form, companyId: e.target.value })}>
+                            <option value="">Select Vendor/Client...</option>
+                            <optgroup label="Vendors">
+                                {vendors.map(v => <option key={v.id} value={v.id}>{v.companyName}</option>)}
+                            </optgroup>
+                            <optgroup label="Clients">
+                                {clients.map(c => <option key={c.id} value={c.id}>{c.companyName}</option>)}
+                            </optgroup>
+                        </select>
+                        <select className="p-2 border rounded" value={form.status || 'Open'} onChange={e => setForm({ ...form, status: e.target.value })}>
+                            <option value="Open">Open</option>
+                            <option value="Sent">Sent</option>
+                            <option value="Closed">Closed</option>
+                        </select>
                     </div>
                 </div>
             );
