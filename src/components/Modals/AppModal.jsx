@@ -584,3 +584,4 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
         </div>
     );
 };
+
