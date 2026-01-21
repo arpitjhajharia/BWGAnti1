@@ -12,6 +12,7 @@ import { QuotesTab } from './components/modules/QuotesTab';
 import { TaskBoard } from './components/modules/TaskBoard';
 import { AdminPanel } from './components/modules/AdminPanel';
 import { RFQMaster } from './components/modules/RFQMaster';
+import { ORSMaster } from './components/modules/ORSMaster';
 
 // Modals
 import { AppModal } from './components/modals/AppModal';
@@ -42,6 +43,7 @@ function App() {
     { id: 'clients', label: 'Clients', icon: Icons.Users },
     { id: 'quotes', label: 'Quotes', icon: Icons.Money },
     { id: 'tasks', label: 'Tasks', icon: Icons.Task },
+    { id: 'ors', label: 'Production (ORS)', icon: Icons.Box },
   ];
 
   if (currentUser.role === 'Admin') {
@@ -148,7 +150,7 @@ function App() {
           {activeTab === 'rfqs' && <RFQMaster data={data} actions={actions} setModal={setModal} />}
           {activeTab === 'products' && <ProductMaster data={data} actions={actions} setModal={setModal} setActiveQuotesView={setActiveQuotesView} onNavigateToFormulation={handleFormulationNavigation} />}
           {activeTab === 'formulations' && <Formulations data={data} actions={actions} setModal={setModal} targetFormulationId={targetFormulationId} />}
-
+          {activeTab === 'ors' && <ORSMaster data={data} actions={actions} setModal={setModal} />}
           {activeTab === 'vendors' && <CompanyMaster type="vendor" data={data} actions={actions} setModal={setModal} setDetailView={setDetailView} />}
           {activeTab === 'clients' && <CompanyMaster type="client" data={data} actions={actions} setModal={setModal} setDetailView={setDetailView} />}
           {activeTab === 'quotes' && <QuotesTab data={data} actions={actions} setModal={setModal} />}

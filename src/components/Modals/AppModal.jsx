@@ -91,7 +91,7 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
     // --- HANDLERS ---
 
     const submit = async () => {
-        const map = { product: 'products', sku: 'skus', vendor: 'vendors', client: 'clients', contact: 'contacts', quoteReceived: 'quotesReceived', quoteSent: 'quotesSent', task: 'tasks', user: 'users', order: 'orders', formulation: 'formulations', rfq: 'rfqs' };
+        const map = { product: 'products', sku: 'skus', vendor: 'vendors', client: 'clients', contact: 'contacts', quoteReceived: 'quotesReceived', quoteSent: 'quotesSent', task: 'tasks', user: 'users', order: 'orders', formulation: 'formulations', rfq: 'rfqs', ors: 'ors' };
         const col = map[modal.type];
 
         // Task Linking Logic
@@ -564,6 +564,250 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
                                 <option value="Sent">Sent</option>
                                 <option value="Closed">Closed</option>
                             </select>
+                        </div>
+                    </div>
+                );
+            case 'ors':
+                // --- SAFE DATA LOOKUP (Prevents Crashes) ---
+                // We use safe navigation (?.) and default arrays (|| []) to ensure no "undefined" errors
+                const safeSkus = skus || [];
+                const safeProducts = products || [];
+                const safeFormulations = data.formulations || [];
+
+                // Find the currently selected items safely
+                const selectedSku = safeSkus.find(s => String(s.id) === String(form.skuId));
+                const selectedProduct = selectedSku ? safeProducts.find(p => p.id === selectedSku.productId) : null;
+                const linkedFormulation = safeFormulations.find(f => String(f.skuId) === String(form.skuId));
+
+                // --- SNAPSHOT LOGIC ---
+                const handleSkuSelection = (skuId) => {
+                    try {
+                        const s = safeSkus.find(x => String(x.id) === String(skuId));
+                        const p = s ? safeProducts.find(x => x.id === s.productId) : null;
+                        const f = safeFormulations.find(x => String(x.skuId) === String(skuId));
+
+                        setForm(prev => ({
+                            ...prev,
+                            skuId: skuId,
+                            // Save a snapshot of the text so it doesn't change later
+                            snapshotName: p ? p.name : '',
+                            snapshotVariant: s ? `${s.variant} ${s.flavour || ''}` : '',
+                            snapshotPack: s ? `${s.packSize}${s.unit} ${s.packType}` : '',
+                            // Copy arrays safely
+                            snapshotIngredients: f ? (f.ingredients || []) : [],
+                            snapshotPackaging: f ? (f.packaging || []) : []
+                        }));
+                    } catch (err) {
+                        console.error("Error selecting SKU:", err);
+                    }
+                };
+
+                return (
+                    <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-2">
+                        <div className="flex justify-between items-center border-b pb-2">
+                            <h3 className="font-bold text-lg">{modal.isEdit ? 'Edit' : 'New'} ORS (Production Request)</h3>
+                            <div className="text-xs font-mono bg-slate-100 p-1 rounded">PO: {form.poNumber || 'Draft'}</div>
+                        </div>
+
+                        {/* 1. Header Info */}
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">PO Number</label>
+                                <input className="w-full p-2 border rounded" value={form.poNumber || ''} onChange={e => setForm({ ...form, poNumber: e.target.value })} placeholder="e.g. PO-2024-001" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Date of Request</label>
+                                <input type="date" className="w-full p-2 border rounded" value={form.date || ''} onChange={e => setForm({ ...form, date: e.target.value })} />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Vendor (OEM)</label>
+                                <select className="w-full p-2 border rounded" value={form.vendorId || ''} onChange={e => setForm({ ...form, vendorId: e.target.value })}>
+                                    <option value="">Select Vendor...</option>
+                                    {(vendors || []).map(v => <option key={v.id} value={v.id}>{v.companyName}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">SKU to Produce</label>
+                                <select className="w-full p-2 border rounded" value={form.skuId || ''} onChange={e => handleSkuSelection(e.target.value)}>
+                                    <option value="">Select SKU...</option>
+                                    {safeSkus.map(s => {
+                                        const p = safeProducts.find(x => x.id === s.productId);
+                                        return <option key={s.id} value={s.id}>{p?.name || 'Item'} - {s.variant} ({s.packSize}{s.unit})</option>
+                                    })}
+                                </select>
+                            </div>
+                        </div>
+
+                        {/* 2. AUTOMATIC PRODUCT SPECS (Read Only Visualization) */}
+                        {form.skuId && (
+                            <div className="bg-slate-50 rounded border border-slate-200 p-4 space-y-4">
+                                <div className="flex justify-between items-start">
+                                    <h4 className="text-xs font-bold text-slate-700 uppercase flex items-center gap-2">
+                                        <Icons.Box className="w-3 h-3" /> Manufacturing Specifications
+                                    </h4>
+                                    <Badge color="blue">Auto-Linked</Badge>
+                                </div>
+
+                                {/* SKU Summary */}
+                                <div className="grid grid-cols-3 gap-2 text-xs">
+                                    <div className="bg-white p-2 rounded border border-slate-100">
+                                        <div className="text-slate-400 mb-1">Product</div>
+                                        <div className="font-bold text-slate-800">{selectedProduct?.name || form.snapshotName || '-'}</div>
+                                    </div>
+                                    <div className="bg-white p-2 rounded border border-slate-100">
+                                        <div className="text-slate-400 mb-1">Variant</div>
+                                        <div className="font-bold text-slate-800">{selectedSku?.variant || form.snapshotVariant || '-'}</div>
+                                    </div>
+                                    <div className="bg-white p-2 rounded border border-slate-100">
+                                        <div className="text-slate-400 mb-1">Pack Size</div>
+                                        <div className="font-bold text-slate-800">{selectedSku ? `${selectedSku.packSize}${selectedSku.unit} ${selectedSku.packType}` : (form.snapshotPack || '-')}</div>
+                                    </div>
+                                </div>
+
+                                {/* Ingredients Table */}
+                                <div>
+                                    <div className="text-[10px] font-bold text-slate-500 uppercase mb-1 pl-1">Formulation</div>
+                                    <div className="bg-white border border-slate-200 rounded overflow-hidden">
+                                        <table className="w-full text-xs">
+                                            <thead className="bg-slate-100 text-slate-500">
+                                                <tr>
+                                                    <th className="p-2 text-left">Ingredient</th>
+                                                    <th className="p-2 text-left">Type</th>
+                                                    <th className="p-2 text-right">Dosage</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {(form.snapshotIngredients || linkedFormulation?.ingredients || []).map((ing, i) => (
+                                                    <tr key={i}>
+                                                        <td className="p-2">{ing?.name || '-'}</td>
+                                                        <td className="p-2 text-slate-500">{ing?.type || 'Active'}</td>
+                                                        <td className="p-2 text-right font-mono">{ing?.perSku || ing?.perServing || '-'}</td>
+                                                    </tr>
+                                                ))}
+                                                {(form.snapshotIngredients || linkedFormulation?.ingredients || []).length === 0 && (
+                                                    <tr><td colSpan="3" className="p-2 text-center text-slate-400 italic">No formulation data linked</td></tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                {/* Packaging List */}
+                                <div>
+                                    <div className="text-[10px] font-bold text-slate-500 uppercase mb-1 pl-1">Packaging Materials</div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {(form.snapshotPackaging || linkedFormulation?.packaging || []).map((pack, i) => (
+                                            <span key={i} className="text-xs bg-white border border-slate-200 px-2 py-1 rounded text-slate-700">
+                                                <span className="font-bold">{pack?.item || 'Item'}</span>: {pack?.qty || '-'}
+                                            </span>
+                                        ))}
+                                        {(form.snapshotPackaging || linkedFormulation?.packaging || []).length === 0 && (
+                                            <span className="text-xs text-slate-400 italic">No packaging BOM linked</span>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 3. Special Instructions */}
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Special Instructions / Notes</label>
+                            <textarea
+                                className="w-full p-2 border rounded h-20 text-xs"
+                                value={form.specialInstructions || ''}
+                                onChange={e => setForm({ ...form, specialInstructions: e.target.value })}
+                                placeholder="Any specific handling instructions, batch coding format, or special checks..."
+                            />
+                        </div>
+
+                        {/* 4. Commercials & Timeline */}
+                        <div className="p-3 bg-blue-50/50 rounded border border-blue-100 grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-[10px] font-bold text-blue-600 uppercase mb-1">Total Quantity</label>
+                                <input type="number" className="w-full p-2 border rounded" value={form.qty || ''} onChange={e => setForm({ ...form, qty: e.target.value })} />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold text-blue-600 uppercase mb-1">Cost Per Unit</label>
+                                <div className="flex">
+                                    <select
+                                        className="w-20 p-2 border rounded-l bg-slate-50 text-xs font-bold"
+                                        value={form.currency || 'INR'}
+                                        onChange={e => setForm({ ...form, currency: e.target.value })}
+                                    >
+                                        <option value="INR">₹ INR</option>
+                                        <option value="USD">$ USD</option>
+                                    </select>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        className="w-full p-2 border rounded-r"
+                                        value={form.price || ''}
+                                        onChange={e => setForm({ ...form, price: e.target.value })}
+                                        placeholder="0.00"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Delivery Timeline in WEEKS */}
+                            <div>
+                                <label className="block text-[10px] font-bold text-blue-600 uppercase mb-1">Lead Time</label>
+                                <div className="relative">
+                                    <input
+                                        type="number"
+                                        className="w-full p-2 border rounded pr-12"
+                                        value={form.leadTimeWeeks || ''}
+                                        onChange={e => setForm({ ...form, leadTimeWeeks: e.target.value })}
+                                    />
+                                    <span className="absolute right-3 top-2 text-xs text-slate-500 font-bold">Weeks</span>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-[10px] font-bold text-blue-600 uppercase mb-1">Shelf Life</label>
+                                <input className="w-full p-2 border rounded" value={form.shelfLife || ''} onChange={e => setForm({ ...form, shelfLife: e.target.value })} placeholder="e.g. 24 Months" />
+                            </div>
+                        </div>
+
+                        {/* 5. Compliance & Terms */}
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Price Terms</label>
+                                <select className="w-full p-2 border rounded" value={form.priceTerms || ''} onChange={e => setForm({ ...form, priceTerms: e.target.value })}>
+                                    <option value="">Select...</option>
+                                    <option value="Ex-Works">Ex-Works</option>
+                                    <option value="FOB">FOB</option>
+                                    <option value="CIF">CIF</option>
+                                    <option value="DDP">DDP</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Country of Sale</label>
+                                <input className="w-full p-2 border rounded" value={form.countryOfSale || ''} onChange={e => setForm({ ...form, countryOfSale: e.target.value })} placeholder="e.g. USA, India" />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Required Documents</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                {['COA', 'MSDS', 'Comm. Invoice', 'Packing List', 'Microbial Report', 'Heavy Metal Report'].map(doc => (
+                                    <label key={doc} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={(form.requiredDocs || []).includes(doc)}
+                                            onChange={e => {
+                                                const current = form.requiredDocs || [];
+                                                if (e.target.checked) setForm({ ...form, requiredDocs: [...current, doc] });
+                                                else setForm({ ...form, requiredDocs: current.filter(d => d !== doc) });
+                                            }}
+                                            className="rounded text-blue-600"
+                                        />
+                                        {doc}
+                                    </label>
+                                ))}
+                            </div>
                         </div>
                     </div>
                 );

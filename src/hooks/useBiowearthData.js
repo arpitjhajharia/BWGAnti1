@@ -11,7 +11,7 @@ export const useBiowearthData = () => {
     const [data, setData] = useState({
         products: [], skus: [], vendors: [], clients: [], contacts: [],
         quotesReceived: [], quotesSent: [], tasks: [], orders: [], formulations: [],
-        rfqs: [], // <--- NEW STATE
+        rfqs: [], ors: [], // <--- NEW STATE
         userProfiles: [], settings: {}
     });
 
@@ -42,6 +42,7 @@ export const useBiowearthData = () => {
                     // NEW LISTENER ADDED BELOW
                     onSnapshot(collection(db, path, 'formulations'), s => setData(p => ({ ...p, formulations: s.docs.map(d => ({ id: d.id, ...d.data() })) }))),
                     onSnapshot(collection(db, path, 'rfqs'), s => setData(p => ({ ...p, rfqs: s.docs.map(d => ({ id: d.id, ...d.data() })) }))),
+                    onSnapshot(collection(db, path, 'ors'), s => setData(p => ({ ...p, ors: s.docs.map(d => ({ id: d.id, ...d.data() })) }))),
 
                     onSnapshot(collection(db, path, 'users'), s => {
                         const users = s.docs.map(d => ({ id: d.id, ...d.data() }));
