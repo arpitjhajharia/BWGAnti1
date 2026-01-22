@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { Icons } from '../ui/Icons';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
-import { formatDate, formatMoney } from '../../utils/helpers';
+import { formatDate } from '../../utils/helpers';
 
 export const ORSMaster = ({ data, actions, setModal }) => {
-    const { ors, vendors, skus, products } = data;
+    // Added 'formulations' to destructuring to fetch linked data
+    const { ors = [], vendors, skus, products, formulations = [] } = data;
     const [searchTerm, setSearchTerm] = useState('');
 
     const getVendorName = (id) => vendors.find(v => v.id === id)?.companyName || 'Unknown Vendor';
@@ -21,17 +24,147 @@ export const ORSMaster = ({ data, actions, setModal }) => {
         getVendorName(o.vendorId).toLowerCase().includes(searchTerm.toLowerCase())
     );
 
+    const generatePDF = (e, item) => {
+        e.stopPropagation(); // Prevent row click events
+
+        try {
+            const doc = new jsPDF();
+            const vendor = vendors.find(v => v.id === item.vendorId);
+            const sku = skus.find(s => s.id === item.skuId);
+            const product = products.find(p => p.id === sku?.productId);
+            // Find linked formulation
+            const formulation = formulations.find(f => f.skuId === sku?.id);
+
+            // Format Date with Year
+            const dateObj = new Date(item.date);
+            const dateWithYear = !isNaN(dateObj)
+                ? dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-')
+                : '-';
+
+            // Format Packing Materials
+            const packingMaterials = formulation?.packaging?.length > 0
+                ? formulation.packaging.map(p => `${p.item} (${p.qty})`).join(', ')
+                : 'None / Not Linked';
+
+            // --- Header ---
+            doc.setFontSize(20);
+            doc.text("OEM Request Sheet (ORS)", 105, 20, null, null, "center");
+
+            doc.setFontSize(10);
+            doc.text(`PO No: ${item.poNumber || '-'}`, 14, 35);
+            doc.text(`Date: ${dateWithYear}`, 14, 40);
+            doc.text(`Vendor: ${vendor?.companyName || '-'}`, 14, 45);
+
+            // --- Main Details Table ---
+            const tableBody = [
+                ['Product', product?.name || '-'],
+                ['Variant', sku?.variant || '-'],
+                ['Flavour', sku?.flavour || '-'],
+                ['Pack Details', sku ? `${sku.packSize} ${sku.unit} (${sku.packType})` : '-'],
+                ['Packing Materials', packingMaterials],
+                ['Quantity', `${item.qty || 0} units`],
+                ['Cost', `${item.currency || 'INR'} ${item.costPerUnit || 0} (${item.costTerms || '-'})`],
+                ['Price Terms', item.priceTerms || '-'],
+                ['Country of Sale', item.countryOfSale || '-'],
+                ['Lead Time', `${item.leadTime || 0} weeks`],
+                ['Shelf Life', `${item.shelfLife || 0} months`],
+            ];
+
+            autoTable(doc, {
+                startY: 55,
+                head: [['Field', 'Value']],
+                body: tableBody,
+                theme: 'grid',
+                headStyles: { fillColor: [51, 65, 85] }, // Slate-700
+                styles: { fontSize: 10, cellPadding: 2 },
+                columnStyles: { 0: { cellWidth: 50, fontStyle: 'bold' } }
+            });
+
+            let finalY = (doc.lastAutoTable && doc.lastAutoTable.finalY) || 150;
+
+            // --- Formulation Table (Ingredients) ---
+            if (formulation?.ingredients?.length > 0) {
+                // Check page break
+                if (finalY > 230) { doc.addPage(); finalY = 20; }
+
+                doc.setFontSize(11);
+                doc.setFont(undefined, 'bold');
+                doc.text("Formulation Details:", 14, finalY + 10);
+                doc.setFont(undefined, 'normal');
+
+                const ingBody = formulation.ingredients.map(ing => [
+                    ing.name,
+                    ing.type || 'Active',
+                    ing.per100g || '-',
+                    ing.perSku || '-'
+                ]);
+
+                autoTable(doc, {
+                    startY: finalY + 15,
+                    head: [['Ingredient', 'Type', 'Qty / 100g', 'Qty / Unit']],
+                    body: ingBody,
+                    theme: 'striped',
+                    headStyles: { fillColor: [100, 116, 139] }, // Slate-500
+                    styles: { fontSize: 9, cellPadding: 1.5 },
+                });
+
+                // Update finalY after formulation table
+                finalY = doc.lastAutoTable.finalY;
+            } else {
+                // If no formulation linked, show small note
+                doc.setFontSize(10);
+                doc.setTextColor(150);
+                doc.text("(No linked formulation found)", 14, finalY + 10);
+                doc.setTextColor(0);
+                finalY += 15;
+            }
+
+            // --- Documents Checklist ---
+            const docsList = Object.entries(item.requiredDocs || {})
+                .filter(([_, required]) => required)
+                .map(([docName]) => [docName, "Required"]);
+
+            if (docsList.length > 0) {
+                // Check if we need a new page for docs
+                if (finalY > 240) {
+                    doc.addPage();
+                    finalY = 20;
+                }
+
+                doc.setFontSize(11);
+                doc.setFont(undefined, 'bold');
+                doc.text("Required Documents:", 14, finalY + 10);
+                doc.setFont(undefined, 'normal');
+
+                autoTable(doc, {
+                    startY: finalY + 15,
+                    body: docsList,
+                    theme: 'plain',
+                    styles: { fontSize: 9, cellPadding: 1 },
+                    columnStyles: { 0: { cellWidth: 100 }, 1: { fontStyle: 'bold' } }
+                });
+            }
+
+            // Save File
+            doc.save(`ORS_${item.poNumber || 'draft'}.pdf`);
+
+        } catch (error) {
+            console.error("PDF Generation Error:", error);
+            alert(`Failed to generate PDF: ${error.message}`);
+        }
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
                 <div>
-                    <h2 className="text-xl font-bold text-slate-800">OEM Request Sheets (ORS)</h2>
-                    <p className="text-sm text-slate-500">Production orders and manufacturing specifications</p>
+                    <h2 className="text-xl font-bold text-slate-800">OEM Request Sheets</h2>
+                    <p className="text-sm text-slate-500">Manage manufacturing orders</p>
                 </div>
                 <div className="flex gap-2">
                     <input
                         placeholder="Search PO or Vendor..."
-                        className="p-2 border rounded text-sm w-64"
+                        className="p-2 border rounded text-sm w-64 focus:ring-2 focus:ring-blue-100 outline-none"
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
                     />
@@ -43,43 +176,59 @@ export const ORSMaster = ({ data, actions, setModal }) => {
                 <table className="w-full text-left border-collapse">
                     <thead className="bg-slate-50 text-xs font-bold text-slate-500 border-b border-slate-200">
                         <tr>
-                            <th className="p-4">Date / PO #</th>
+                            <th className="p-4">PO Details</th>
                             <th className="p-4">Vendor</th>
-                            <th className="p-4">Product SKU</th>
-                            <th className="p-4">Commercials</th>
-                            <th className="p-4">Lead Time</th>
+                            <th className="p-4">SKU</th>
+                            <th className="p-4">Qty & Cost</th>
+                            <th className="p-4">Terms</th>
                             <th className="p-4 text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-sm">
                         {filtered.map(item => (
-                            <tr key={item.id} className="hover:bg-slate-50">
+                            <tr key={item.id} className="hover:bg-slate-50 group">
                                 <td className="p-4">
                                     <div className="font-bold text-slate-800">{item.poNumber || 'Draft'}</div>
                                     <div className="text-xs text-slate-500">{formatDate(item.date)}</div>
                                 </td>
-                                <td className="p-4 font-medium text-slate-600">{getVendorName(item.vendorId)}</td>
+                                <td className="p-4 text-slate-600 font-medium">{getVendorName(item.vendorId)}</td>
                                 <td className="p-4">
-                                    <div className="text-slate-800 font-medium">{getSkuDetails(item.skuId)}</div>
-                                    <Badge color="slate">{item.countryOfSale || 'Domestic'}</Badge>
+                                    <div className="text-slate-800 font-medium max-w-[200px] truncate" title={getSkuDetails(item.skuId)}>
+                                        {getSkuDetails(item.skuId)}
+                                    </div>
                                 </td>
                                 <td className="p-4">
                                     <div className="text-slate-800">{item.qty} units</div>
                                     <div className="text-xs text-slate-500 font-mono">
-                                        {/* Display Currency and Amount to 2 decimals */}
-                                        {item.currency || 'INR'} {parseFloat(item.price || 0).toFixed(2)}
-                                    </div>
-                                    <div className="text-[10px] text-slate-400">{item.priceTerms}</div>
-                                </td>
-                                <td className="p-4 text-slate-600">
-                                    <div className="flex items-center gap-1">
-                                        <Icons.Task className="w-4 h-4 text-slate-400" />
-                                        <span>{item.leadTimeWeeks ? `${item.leadTimeWeeks} Weeks` : '-'}</span>
+                                        {item.currency} {item.costPerUnit}
                                     </div>
                                 </td>
-                                <td className="p-4 text-right flex justify-end gap-2">
-                                    <button onClick={() => setModal({ open: true, type: 'ors', data: item, isEdit: true })} className="p-1 text-slate-400 hover:text-blue-600"><Icons.Edit className="w-4 h-4" /></button>
-                                    <button onClick={() => actions.del('ors', item.id)} className="p-1 text-slate-400 hover:text-red-600"><Icons.Trash className="w-4 h-4" /></button>
+                                <td className="p-4">
+                                    <Badge color="blue">{item.priceTerms || '-'}</Badge>
+                                    <div className="text-[10px] text-slate-400 mt-1">{item.countryOfSale}</div>
+                                </td>
+                                <td className="p-4 text-right">
+                                    <div className="flex justify-end gap-2">
+                                        <button
+                                            onClick={(e) => generatePDF(e, item)}
+                                            className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded transition-colors"
+                                            title="Download PDF"
+                                        >
+                                            <Icons.File className="w-4 h-4" />
+                                        </button>
+                                        <button
+                                            onClick={() => setModal({ open: true, type: 'ors', data: item, isEdit: true })}
+                                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                        >
+                                            <Icons.Edit className="w-4 h-4" />
+                                        </button>
+                                        <button
+                                            onClick={() => actions.del('ors', item.id)}
+                                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                        >
+                                            <Icons.Trash className="w-4 h-4" />
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         ))}

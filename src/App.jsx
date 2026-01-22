@@ -11,6 +11,7 @@ import { CompanyMaster } from './components/modules/CompanyMaster';
 import { QuotesTab } from './components/modules/QuotesTab';
 import { TaskBoard } from './components/modules/TaskBoard';
 import { AdminPanel } from './components/modules/AdminPanel';
+import { ORSMaster } from './components/modules/ORSMaster';
 
 
 // Modals
@@ -41,6 +42,7 @@ function App() {
     { id: 'clients', label: 'Clients', icon: Icons.Users },
     { id: 'quotes', label: 'Quotes', icon: Icons.Money },
     { id: 'tasks', label: 'Tasks', icon: Icons.Task },
+    { id: 'ors', label: 'ORS', icon: Icons.File },
   ];
 
   if (currentUser.role === 'Admin') {
@@ -146,6 +148,7 @@ function App() {
           {activeTab === 'dashboard' && <DashboardOverview data={data} actions={actions} setActiveTab={setActiveTab} />}
           {activeTab === 'products' && <ProductMaster data={data} actions={actions} setModal={setModal} setActiveQuotesView={setActiveQuotesView} onNavigateToFormulation={handleFormulationNavigation} />}
           {activeTab === 'formulations' && <Formulations data={data} actions={actions} setModal={setModal} targetFormulationId={targetFormulationId} />}
+          {activeTab === 'ors' && <ORSMaster data={data} actions={actions} setModal={setModal} />} {/* <--- Add this line */}
           {activeTab === 'vendors' && <CompanyMaster type="vendor" data={data} actions={actions} setModal={setModal} setDetailView={setDetailView} />}
           {activeTab === 'clients' && <CompanyMaster type="client" data={data} actions={actions} setModal={setModal} setDetailView={setDetailView} />}
           {activeTab === 'quotes' && <QuotesTab data={data} actions={actions} setModal={setModal} />}
