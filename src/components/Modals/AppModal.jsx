@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { Icons } from '../ui/Icons';
 import { Button } from '../ui/Button';
 import { formatMoney } from '../../utils/helpers';
@@ -121,17 +123,14 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
             product: 'products', sku: 'skus', vendor: 'vendors', client: 'clients',
             contact: 'contacts', quoteReceived: 'quotesReceived', quoteSent: 'quotesSent',
             task: 'tasks', user: 'users', order: 'orders', formulation: 'formulations',
-            ors: 'ors', rfq: 'rfqs' // <--- Mapped RFQ
+            ors: 'ors', rfq: 'rfqs'
         };
         const col = map[modal.type];
 
         // Specific Validation for Vendor Input in RFQ (since it's a datalist)
         if (modal.type === 'rfq' && form.vendorNameInput) {
-            // Try to find ID from name
             const v = vendors.find(ven => ven.companyName === form.vendorNameInput);
             if (v) form.vendorId = v.id;
-            // Note: If no match found, we might want to alert or save as free text? 
-            // For now, let's assume valid selection is required or we save the name if ID missing.
         }
 
         // Task Linking Logic
@@ -159,6 +158,55 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
             else await actions.add(col, form);
             setModal({ open: false, type: null, data: null, isEdit: false });
         }
+    };
+
+    // --- PDF GENERATOR (Vendor/Client) ---
+    const generateCompanyPDF = () => {
+        const doc = new jsPDF();
+        const date = new Date();
+        const dateStr = `${String(date.getDate()).padStart(2, '0')}${String(date.getMonth() + 1).padStart(2, '0')}${date.getFullYear()}`;
+        const fileName = `${form.companyName || 'Company'}_${dateStr}.pdf`;
+
+        // Header
+        doc.setFontSize(18);
+        doc.text(`${modal.type === 'vendor' ? 'Vendor' : 'Client'} Profile`, 14, 20);
+
+        doc.setFontSize(10);
+        doc.setTextColor(100);
+        doc.text(`Generated on: ${date.toLocaleDateString()}`, 14, 28);
+        doc.setTextColor(0);
+
+        // Table Data
+        const tableBody = [
+            ['Company Name', form.companyName || '-'],
+            ['Official Name', form.officialName || '-'],
+            ['Website', form.website || '-'],
+            ['Country', form.country || '-'],
+            ['Billing Address', form.billingAddress || '-'],
+            ['Shipping Address', form.shippingAddress || '-'],
+            ['UID / Tax ID', `${form.uidType || ''} ${form.uidNumber || ''}`.trim() || '-'],
+            ['Bank Details', form.bankDetails || '-'],
+            ['Drive Link', form.driveLink || '-']
+        ];
+
+        // Client Specific Fields
+        if (modal.type === 'client') {
+            tableBody.push(['Lead Source', form.leadSource || '-']);
+            tableBody.push(['Lead Date', form.leadDate || '-']);
+            tableBody.push(['Status', form.status || '-']);
+        }
+
+        autoTable(doc, {
+            startY: 35,
+            head: [['Field', 'Details']],
+            body: tableBody,
+            theme: 'grid',
+            headStyles: { fillColor: [51, 65, 85] }, // Slate-700
+            columnStyles: { 0: { cellWidth: 50, fontStyle: 'bold' } },
+            styles: { fontSize: 10, cellPadding: 3 }
+        });
+
+        doc.save(fileName);
     };
 
     // Helper functions for Dynamic Arrays
@@ -238,13 +286,66 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
             );
             case 'vendor':
             case 'client': return (
-                <div className="space-y-4">
+                <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-2">
                     <h3 className="font-bold text-lg capitalize">{modal.isEdit ? 'Edit' : 'Add'} {modal.type}</h3>
+
+                    {/* Basic Info */}
                     <input placeholder="Company Name" className="w-full p-2 border rounded" value={form.companyName || ''} onChange={e => setForm({ ...form, companyName: e.target.value })} />
+                    <input placeholder="Official Name (for Contracts/Invoicing)" className="w-full p-2 border rounded" value={form.officialName || ''} onChange={e => setForm({ ...form, officialName: e.target.value })} />
+
                     <div className="grid grid-cols-2 gap-4">
                         <input placeholder="Website" className="p-2 border rounded" value={form.website || ''} onChange={e => setForm({ ...form, website: e.target.value })} />
-                        <input placeholder="Country" className="p-2 border rounded" value={form.country || ''} onChange={e => setForm({ ...form, country: e.target.value })} />
+
+                        {/* Auto-filter Country */}
+                        <div>
+                            <input
+                                list="country-list-global"
+                                placeholder="Country"
+                                className="w-full p-2 border rounded"
+                                value={form.country || ''}
+                                onChange={e => setForm({ ...form, country: e.target.value })}
+                            />
+                            <datalist id="country-list-global">
+                                {COUNTRIES.map(c => <option key={c} value={c} />)}
+                            </datalist>
+                        </div>
                     </div>
+
+                    {/* Address Section */}
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase">Billing Address</label>
+                            <textarea rows="3" className="w-full p-2 border rounded text-sm mt-1" value={form.billingAddress || ''} onChange={e => setForm({ ...form, billingAddress: e.target.value })} />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase">Shipping Address</label>
+                            <textarea rows="3" className="w-full p-2 border rounded text-sm mt-1" value={form.shippingAddress || ''} onChange={e => setForm({ ...form, shippingAddress: e.target.value })} />
+                        </div>
+                    </div>
+
+                    {/* Financial Details */}
+                    <div className="grid grid-cols-2 gap-4 bg-slate-50 p-2 rounded border border-slate-100">
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase">Tax / UID Info</label>
+                            <div className="flex gap-2 mt-1">
+                                <select className="p-2 border rounded text-sm w-24" value={form.uidType || ''} onChange={e => setForm({ ...form, uidType: e.target.value })}>
+                                    <option value="">Type</option>
+                                    <option value="GST">GST</option>
+                                    <option value="VAT">VAT</option>
+                                    <option value="EIN">EIN</option>
+                                    <option value="PAN">PAN</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                                <input placeholder="Number" className="p-2 border rounded text-sm flex-1" value={form.uidNumber || ''} onChange={e => setForm({ ...form, uidNumber: e.target.value })} />
+                            </div>
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase">Bank Details</label>
+                            <textarea rows="2" placeholder="Bank Name, Acc No, SWIFT..." className="w-full p-2 border rounded text-sm mt-1" value={form.bankDetails || ''} onChange={e => setForm({ ...form, bankDetails: e.target.value })} />
+                        </div>
+                    </div>
+
+                    {/* Client Specifics */}
                     {modal.type === 'client' && (
                         <div className="grid grid-cols-2 gap-4">
                             <select className="p-2 border rounded" value={form.leadSource || ''} onChange={e => setForm({ ...form, leadSource: e.target.value })}>
@@ -254,7 +355,9 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
                             <input type="date" className="p-2 border rounded" value={form.leadDate || ''} onChange={e => setForm({ ...form, leadDate: e.target.value })} />
                         </div>
                     )}
+
                     <input placeholder="Drive Folder Link" className="w-full p-2 border rounded" value={form.driveLink || ''} onChange={e => setForm({ ...form, driveLink: e.target.value })} />
+
                     {modal.type === 'client' && (
                         <select className="w-full p-2 border rounded" value={form.status || ''} onChange={e => setForm({ ...form, status: e.target.value })}>
                             <option>Status...</option>
@@ -434,7 +537,12 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
                                     const isRequired = form.docRequirements?.[doc];
                                     return (
                                         <label key={doc} className={`flex items-center gap-2 text-xs cursor-pointer p-1 rounded border transition-colors ${isRequired ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-slate-200 text-slate-500'}`}>
-                                            <input type="checkbox" checked={!!isRequired} onChange={() => handleRequiredDocToggle(doc)} className="rounded text-blue-600 focus:ring-0" />
+                                            <input
+                                                type="checkbox"
+                                                checked={!!isRequired}
+                                                onChange={() => handleRequiredDocToggle(doc)}
+                                                className="rounded text-blue-600 focus:ring-0"
+                                            />
                                             {doc}
                                         </label>
                                     );
@@ -517,24 +625,69 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
             case 'ors': return (
                 <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-2">
                     <h3 className="font-bold text-lg">{modal.isEdit ? 'Edit' : 'New'} ORS</h3>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="text-xs font-bold text-slate-500 uppercase">Date</label>
-                            <input type="date" className="w-full p-2 border rounded text-sm" value={form.date || ''} onChange={e => setForm({ ...form, date: e.target.value })} />
-                        </div>
-                        <div>
-                            <label className="text-xs font-bold text-slate-500 uppercase">PO No.</label>
-                            <input className="w-full p-2 border rounded text-sm" placeholder="e.g. PO-2024-001" value={form.poNumber || ''} onChange={e => setForm({ ...form, poNumber: e.target.value })} />
-                        </div>
+
+                    {/* Recipient Selection */}
+                    <div className="bg-slate-100 p-2 rounded flex gap-4 items-center">
+                        <span className="text-xs font-bold text-slate-500 uppercase">Recipient:</span>
+                        {['Vendor', 'Client', 'Both'].map(type => (
+                            <label key={type} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                                <input
+                                    type="radio"
+                                    name="recipientType"
+                                    value={type}
+                                    checked={(form.recipientType || 'Vendor') === type}
+                                    onChange={e => setForm({ ...form, recipientType: e.target.value })}
+                                    className="text-blue-600 focus:ring-blue-500"
+                                />
+                                {type === 'Vendor' ? 'Vendor Only' : type === 'Client' ? 'Client Only' : 'Both'}
+                            </label>
+                        ))}
                     </div>
+
+                    {/* Row 1: Basics */}
+                    <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase">Date</label>
+                        <input type="date" className="w-full p-2 border rounded text-sm" value={form.date || ''} onChange={e => setForm({ ...form, date: e.target.value })} />
+                    </div>
+
+                    {/* Row 2: Parties (Dynamic based on Recipient) */}
                     <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="text-xs font-bold text-slate-500 uppercase">Vendor</label>
-                            <select className="w-full p-2 border rounded text-sm" value={form.vendorId || ''} onChange={e => setForm({ ...form, vendorId: e.target.value })}>
-                                <option value="">Select Vendor...</option>
-                                {vendors.map(v => <option key={v.id} value={v.id}>{v.companyName}</option>)}
-                            </select>
-                        </div>
+                        {((form.recipientType || 'Vendor') === 'Vendor' || form.recipientType === 'Both') && (
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase">Vendor</label>
+                                <select className="w-full p-2 border rounded text-sm" value={form.vendorId || ''} onChange={e => setForm({ ...form, vendorId: e.target.value })}>
+                                    <option value="">Select Vendor...</option>
+                                    {vendors.map(v => <option key={v.id} value={v.id}>{v.companyName}</option>)}
+                                </select>
+                            </div>
+                        )}
+
+                        {((form.recipientType || 'Vendor') === 'Client' || form.recipientType === 'Both') && (
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase">Client</label>
+                                <select className="w-full p-2 border rounded text-sm" value={form.clientId || ''} onChange={e => setForm({ ...form, clientId: e.target.value })}>
+                                    <option value="">Select Client...</option>
+                                    {clients.map(c => <option key={c.id} value={c.id}>{c.companyName}</option>)}
+                                </select>
+                            </div>
+                        )}
+
+                        {form.recipientType !== 'Both' && (
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase">SKU</label>
+                                <select className="w-full p-2 border rounded text-sm" value={form.skuId || ''} onChange={e => setForm({ ...form, skuId: e.target.value })}>
+                                    <option value="">Select SKU...</option>
+                                    {skus.map(s => {
+                                        const p = products.find(x => x.id === s.productId);
+                                        return <option key={s.id} value={s.id}>{p?.name} ({s.variant})</option>
+                                    })}
+                                </select>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* SKU Selection (If Both parties selected, SKU gets its own row) */}
+                    {form.recipientType === 'Both' && (
                         <div>
                             <label className="text-xs font-bold text-slate-500 uppercase">SKU</label>
                             <select className="w-full p-2 border rounded text-sm" value={form.skuId || ''} onChange={e => setForm({ ...form, skuId: e.target.value })}>
@@ -545,7 +698,9 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
                                 })}
                             </select>
                         </div>
-                    </div>
+                    )}
+
+                    {/* Auto-Derived Details Block - Fixed Variable Name */}
                     <div className="bg-slate-50 p-3 rounded border border-slate-200 text-sm space-y-2">
                         <div className="grid grid-cols-2 gap-2">
                             <div><span className="text-slate-400 text-xs">Product:</span> <span className="font-medium">{derivedDetails.productName}</span></div>
@@ -564,6 +719,8 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
                             </div>
                         )}
                     </div>
+
+                    {/* Row 3: Commercials */}
                     <div className="grid grid-cols-3 gap-3">
                         <div>
                             <label className="text-xs font-bold text-slate-500 uppercase">Quantity</label>
@@ -579,6 +736,8 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
                             </div>
                         </div>
                     </div>
+
+                    {/* Row 4: Terms */}
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="text-xs font-bold text-slate-500 uppercase">Cost Terms</label>
@@ -594,6 +753,8 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
                             </select>
                         </div>
                     </div>
+
+                    {/* Row 5: Logistics */}
                     <div className="grid grid-cols-3 gap-3">
                         <div>
                             <label className="text-xs font-bold text-slate-500 uppercase">Lead Time (Wks)</label>
@@ -605,18 +766,31 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
                         </div>
                         <div>
                             <label className="text-xs font-bold text-slate-500 uppercase">Country of Sale</label>
-                            <input list="countries" className="w-full p-2 border rounded text-sm" value={form.countryOfSale || ''} onChange={e => setForm({ ...form, countryOfSale: e.target.value })} placeholder="Type to filter..." />
+                            <input
+                                list="countries"
+                                className="w-full p-2 border rounded text-sm"
+                                value={form.countryOfSale || ''}
+                                onChange={e => setForm({ ...form, countryOfSale: e.target.value })}
+                                placeholder="Type to filter..."
+                            />
                             <datalist id="countries">
                                 {COUNTRIES.map(c => <option key={c} value={c} />)}
                             </datalist>
                         </div>
                     </div>
+
+                    {/* Documents Checklist */}
                     <div className="border-t pt-3">
                         <label className="text-xs font-bold text-slate-500 uppercase block mb-2">Required Documents</label>
                         <div className="grid grid-cols-2 gap-2">
                             {ORS_REQUIRED_DOCS.map(doc => (
                                 <label key={doc} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-slate-50 p-1 rounded">
-                                    <input type="checkbox" checked={!!(form.requiredDocs || {})[doc]} onChange={() => toggleOrsDoc(doc)} className="rounded text-blue-600 focus:ring-0" />
+                                    <input
+                                        type="checkbox"
+                                        checked={!!(form.requiredDocs || {})[doc]}
+                                        onChange={() => toggleOrsDoc(doc)}
+                                        className="rounded text-blue-600 focus:ring-0"
+                                    />
                                     {doc}
                                 </label>
                             ))}
@@ -658,7 +832,7 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
                                 </select>
                             </div>
 
-                            {/* Auto-Populated Info Block */}
+                            {/* Auto-Populated Info Block - Uses derivedDetails correctly now */}
                             {form.skuId && (
                                 <div className="bg-blue-50 p-3 rounded border border-blue-100 text-sm space-y-2">
                                     <div className="grid grid-cols-2 gap-2">
@@ -766,9 +940,16 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 max-h-[95vh] flex flex-col">
                 {renderContent()}
-                <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
-                    <Button variant="secondary" onClick={() => setModal({ open: false, type: null, data: null, isEdit: false })}>Cancel</Button>
-                    <Button onClick={submit}>Save Changes</Button>
+                <div className="flex justify-between mt-6 pt-4 border-t border-slate-100">
+                    <div>
+                        {(modal.type === 'vendor' || modal.type === 'client') && (
+                            <Button variant="secondary" icon={Icons.File} onClick={generateCompanyPDF}>Download PDF</Button>
+                        )}
+                    </div>
+                    <div className="flex gap-3">
+                        <Button variant="secondary" onClick={() => setModal({ open: false, type: null, data: null, isEdit: false })}>Cancel</Button>
+                        <Button onClick={submit}>Save Changes</Button>
+                    </div>
                 </div>
             </div>
         </div>

@@ -7,11 +7,12 @@ import { Badge } from '../ui/Badge';
 import { formatDate } from '../../utils/helpers';
 
 export const ORSMaster = ({ data, actions, setModal }) => {
-    // Added 'formulations' to destructuring to fetch linked data
-    const { ors = [], vendors, skus, products, formulations = [] } = data;
+    // Added 'clients' to destructuring
+    const { ors = [], vendors, clients, skus, products, formulations = [] } = data;
     const [searchTerm, setSearchTerm] = useState('');
 
     const getVendorName = (id) => vendors.find(v => v.id === id)?.companyName || 'Unknown Vendor';
+    const getClientName = (id) => clients.find(c => c.id === id)?.companyName || 'Unknown Client';
 
     const getSkuDetails = (skuId) => {
         const s = skus.find(x => x.id === skuId);
@@ -20,28 +21,27 @@ export const ORSMaster = ({ data, actions, setModal }) => {
     };
 
     const filtered = ors.filter(o =>
-        (o.poNumber || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        getVendorName(o.vendorId).toLowerCase().includes(searchTerm.toLowerCase())
+        getVendorName(o.vendorId).toLowerCase().includes(searchTerm.toLowerCase()) ||
+        getClientName(o.clientId).toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     const generatePDF = (e, item) => {
-        e.stopPropagation(); // Prevent row click events
+        e.stopPropagation();
 
-        try {
+        const type = item.recipientType || 'Vendor';
+
+        // --- Helper Function to Create One PDF ---
+        const createDoc = (targetName, suffix) => {
             const doc = new jsPDF();
-            const vendor = vendors.find(v => v.id === item.vendorId);
             const sku = skus.find(s => s.id === item.skuId);
             const product = products.find(p => p.id === sku?.productId);
-            // Find linked formulation
             const formulation = formulations.find(f => f.skuId === sku?.id);
 
-            // Format Date with Year
             const dateObj = new Date(item.date);
             const dateWithYear = !isNaN(dateObj)
                 ? dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-')
                 : '-';
 
-            // Format Packing Materials
             const packingMaterials = formulation?.packaging?.length > 0
                 ? formulation.packaging.map(p => `${p.item} (${p.qty})`).join(', ')
                 : 'None / Not Linked';
@@ -51,9 +51,9 @@ export const ORSMaster = ({ data, actions, setModal }) => {
             doc.text("OEM Request Sheet (ORS)", 105, 20, null, null, "center");
 
             doc.setFontSize(10);
-            doc.text(`PO No: ${item.poNumber || '-'}`, 14, 35);
-            doc.text(`Date: ${dateWithYear}`, 14, 40);
-            doc.text(`Vendor: ${vendor?.companyName || '-'}`, 14, 45);
+            // Removed PO No. Line
+            doc.text(`Date: ${dateWithYear}`, 14, 35);
+            doc.text(`To: ${targetName}`, 14, 40); // Adjusted Y position
 
             // --- Main Details Table ---
             const tableBody = [
@@ -63,7 +63,6 @@ export const ORSMaster = ({ data, actions, setModal }) => {
                 ['Pack Details', sku ? `${sku.packSize} ${sku.unit} (${sku.packType})` : '-'],
                 ['Packing Materials', packingMaterials],
                 ['Quantity', `${item.qty || 0} units`],
-                ['Cost', `${item.currency || 'INR'} ${item.costPerUnit || 0} (${item.costTerms || '-'})`],
                 ['Price Terms', item.priceTerms || '-'],
                 ['Country of Sale', item.countryOfSale || '-'],
                 ['Lead Time', `${item.leadTime || 0} weeks`],
@@ -71,20 +70,19 @@ export const ORSMaster = ({ data, actions, setModal }) => {
             ];
 
             autoTable(doc, {
-                startY: 55,
+                startY: 50, // Adjusted startY
                 head: [['Field', 'Value']],
                 body: tableBody,
                 theme: 'grid',
-                headStyles: { fillColor: [51, 65, 85] }, // Slate-700
+                headStyles: { fillColor: [51, 65, 85] },
                 styles: { fontSize: 10, cellPadding: 2 },
                 columnStyles: { 0: { cellWidth: 50, fontStyle: 'bold' } }
             });
 
             let finalY = (doc.lastAutoTable && doc.lastAutoTable.finalY) || 150;
 
-            // --- Formulation Table (Ingredients) ---
+            // --- Formulation Table ---
             if (formulation?.ingredients?.length > 0) {
-                // Check page break
                 if (finalY > 230) { doc.addPage(); finalY = 20; }
 
                 doc.setFontSize(11);
@@ -96,27 +94,20 @@ export const ORSMaster = ({ data, actions, setModal }) => {
                     ing.name,
                     ing.type || 'Active',
                     ing.per100g || '-',
+                    ing.perServing || '-',
                     ing.perSku || '-'
                 ]);
 
                 autoTable(doc, {
                     startY: finalY + 15,
-                    head: [['Ingredient', 'Type', 'Qty / 100g', 'Qty / Unit']],
+                    head: [['Ingredient', 'Type', 'Qty / 100g', 'Qty / Serving', 'Qty / Unit']],
                     body: ingBody,
                     theme: 'striped',
-                    headStyles: { fillColor: [100, 116, 139] }, // Slate-500
+                    headStyles: { fillColor: [100, 116, 139] },
                     styles: { fontSize: 9, cellPadding: 1.5 },
                 });
 
-                // Update finalY after formulation table
                 finalY = doc.lastAutoTable.finalY;
-            } else {
-                // If no formulation linked, show small note
-                doc.setFontSize(10);
-                doc.setTextColor(150);
-                doc.text("(No linked formulation found)", 14, finalY + 10);
-                doc.setTextColor(0);
-                finalY += 15;
             }
 
             // --- Documents Checklist ---
@@ -125,11 +116,7 @@ export const ORSMaster = ({ data, actions, setModal }) => {
                 .map(([docName]) => [docName, "Required"]);
 
             if (docsList.length > 0) {
-                // Check if we need a new page for docs
-                if (finalY > 240) {
-                    doc.addPage();
-                    finalY = 20;
-                }
+                if (finalY > 240) { doc.addPage(); finalY = 20; }
 
                 doc.setFontSize(11);
                 doc.setFont(undefined, 'bold');
@@ -145,8 +132,25 @@ export const ORSMaster = ({ data, actions, setModal }) => {
                 });
             }
 
-            // Save File
-            doc.save(`ORS_${item.poNumber || 'draft'}.pdf`);
+            // Update filename: removed poNumber
+            doc.save(`ORS_${dateWithYear}_${suffix}.pdf`);
+        };
+
+        try {
+            // --- LOGIC FOR 3 SCENARIOS ---
+            if (type === 'Vendor' || type === 'Both') {
+                const vName = getVendorName(item.vendorId);
+                createDoc(vName, 'Vendor');
+            }
+
+            if (type === 'Client' || type === 'Both') {
+                const cName = getClientName(item.clientId);
+                if (type === 'Both') {
+                    setTimeout(() => createDoc(cName, 'Client'), 500);
+                } else {
+                    createDoc(cName, 'Client');
+                }
+            }
 
         } catch (error) {
             console.error("PDF Generation Error:", error);
@@ -163,7 +167,7 @@ export const ORSMaster = ({ data, actions, setModal }) => {
                 </div>
                 <div className="flex gap-2">
                     <input
-                        placeholder="Search PO or Vendor..."
+                        placeholder="Search Vendor or Client..."
                         className="p-2 border rounded text-sm w-64 focus:ring-2 focus:ring-blue-100 outline-none"
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
@@ -176,8 +180,8 @@ export const ORSMaster = ({ data, actions, setModal }) => {
                 <table className="w-full text-left border-collapse">
                     <thead className="bg-slate-50 text-xs font-bold text-slate-500 border-b border-slate-200">
                         <tr>
-                            <th className="p-4">PO Details</th>
-                            <th className="p-4">Vendor</th>
+                            <th className="p-4">Date</th>
+                            <th className="p-4">Vendor / Client</th>
                             <th className="p-4">SKU</th>
                             <th className="p-4">Qty & Cost</th>
                             <th className="p-4">Terms</th>
@@ -188,10 +192,19 @@ export const ORSMaster = ({ data, actions, setModal }) => {
                         {filtered.map(item => (
                             <tr key={item.id} className="hover:bg-slate-50 group">
                                 <td className="p-4">
-                                    <div className="font-bold text-slate-800">{item.poNumber || 'Draft'}</div>
-                                    <div className="text-xs text-slate-500">{formatDate(item.date)}</div>
+                                    <div className="font-bold text-slate-800">{formatDate(item.date)}</div>
                                 </td>
-                                <td className="p-4 text-slate-600 font-medium">{getVendorName(item.vendorId)}</td>
+                                <td className="p-4">
+                                    {/* Smart Display of Parties */}
+                                    {(item.recipientType === 'Both' || !item.recipientType) && (
+                                        <>
+                                            <div className="text-slate-700 font-medium">V: {getVendorName(item.vendorId)}</div>
+                                            <div className="text-slate-500 text-xs">C: {getClientName(item.clientId)}</div>
+                                        </>
+                                    )}
+                                    {item.recipientType === 'Vendor' && <div className="text-slate-700 font-medium">{getVendorName(item.vendorId)}</div>}
+                                    {item.recipientType === 'Client' && <div className="text-slate-700 font-medium">{getClientName(item.clientId)}</div>}
+                                </td>
                                 <td className="p-4">
                                     <div className="text-slate-800 font-medium max-w-[200px] truncate" title={getSkuDetails(item.skuId)}>
                                         {getSkuDetails(item.skuId)}
