@@ -7,12 +7,11 @@ import { REQUIRED_DOCS, ORS_REQUIRED_DOCS, COUNTRIES } from '../../utils/constan
 export const AppModal = ({ modal, setModal, data, actions }) => {
     if (!modal.open) return null;
 
-    // Destructure formulations (default to empty array) and other data
     const { products, skus, vendors, clients, userProfiles, quotesReceived, settings, formulations = [] } = data;
     const [form, setForm] = useState(modal.data || {});
 
-    // --- STATE FOR ORS AUTO-FILLS ---
-    const [orsDerived, setOrsDerived] = useState({
+    // --- STATE FOR AUTO-FILLS (ORS & RFQ) ---
+    const [derivedDetails, setDerivedDetails] = useState({
         productName: '-',
         variant: '-',
         pack: '-',
@@ -34,21 +33,23 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
                 }));
             }
             if (modal.type === 'formulation') {
-                setForm(prev => ({
-                    ...prev,
-                    ingredients: prev.ingredients || [],
-                    packaging: prev.packaging || []
-                }));
+                setForm(prev => ({ ...prev, ingredients: [], packaging: [] }));
             }
-            // ORS Defaults
             if (modal.type === 'ors') {
                 setForm(prev => ({
                     ...prev,
                     date: new Date().toISOString().split('T')[0],
                     currency: 'INR',
                     costTerms: 'GST Extra',
-                    // Default all specific ORS docs to true (checked)
                     requiredDocs: ORS_REQUIRED_DOCS.reduce((acc, doc) => ({ ...acc, [doc]: true }), {})
+                }));
+            }
+            // RFQ Defaults
+            if (modal.type === 'rfq') {
+                setForm(prev => ({
+                    ...prev,
+                    requestType: 'Product SKU', // Default
+                    currency: 'INR'
                 }));
             }
         }
@@ -80,35 +81,21 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
     useEffect(() => {
         if (modal.type === 'sku' && !modal.isEdit) {
             const {
-                productName = 'PROD',
-                variant = '',
-                packSize = '',
-                unit = settings?.units?.[0] || 'kg',
-                packType = settings?.packTypes?.[0] || 'Bag',
-                flavour = ''
+                productName = 'PROD', variant = '', packSize = '', unit = 'kg', packType = 'Bag', flavour = ''
             } = form;
-
-            const skuCode = `${productName}-${variant}-${packSize}${unit}-${packType}-${flavour}`
-                .toUpperCase()
-                .replace(/-+/g, '-')
-                .replace(/-$/, '');
-
-            setForm(f => {
-                if (f.name === skuCode) return f;
-                return { ...f, name: skuCode };
-            });
+            const skuCode = `${productName}-${variant}-${packSize}${unit}-${packType}-${flavour}`.toUpperCase().replace(/-+/g, '-').replace(/-$/, '');
+            setForm(f => f.name === skuCode ? f : { ...f, name: skuCode });
         }
     }, [form.variant, form.packSize, form.unit, form.packType, form.flavour, modal.type, modal.isEdit, settings]);
 
-    // ORS Derived Calculations (Product/Variant/Formulation lookup)
+    // Derived Calculations (Shared for ORS & RFQ when SKU is selected)
     useEffect(() => {
-        if (modal.type === 'ors' && form.skuId) {
+        if ((modal.type === 'ors' || (modal.type === 'rfq' && form.requestType === 'Product SKU')) && form.skuId) {
             const s = skus.find(x => x.id === form.skuId);
             const p = products.find(x => x.id === s?.productId);
-            // Find formulation linked to this SKU
             const f = formulations.find(x => x.skuId === s?.id);
 
-            setOrsDerived({
+            setDerivedDetails({
                 productName: p?.name || '-',
                 variant: s?.variant || '-',
                 pack: s ? `${s.packSize} ${s.unit} ${s.packType}` : '-',
@@ -116,9 +103,9 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
                 packagingMaterial: f?.packaging || []
             });
         }
-    }, [form.skuId, skus, products, formulations, modal.type]);
+    }, [form.skuId, form.requestType, skus, products, formulations, modal.type]);
 
-    // Filter SKUs for Vendor Orders (used in 'order' type)
+    // Filter SKUs for Vendor Orders
     const isVendorOrder = vendors.some(v => v.id === form.companyId);
     const availableSkus = useMemo(() => {
         if (modal.type === 'order' && isVendorOrder) {
@@ -131,20 +118,21 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
 
     const submit = async () => {
         const map = {
-            product: 'products',
-            sku: 'skus',
-            vendor: 'vendors',
-            client: 'clients',
-            contact: 'contacts',
-            quoteReceived: 'quotesReceived',
-            quoteSent: 'quotesSent',
-            task: 'tasks',
-            user: 'users',
-            order: 'orders',
-            formulation: 'formulations',
-            ors: 'ors' // Added ORS here
+            product: 'products', sku: 'skus', vendor: 'vendors', client: 'clients',
+            contact: 'contacts', quoteReceived: 'quotesReceived', quoteSent: 'quotesSent',
+            task: 'tasks', user: 'users', order: 'orders', formulation: 'formulations',
+            ors: 'ors', rfq: 'rfqs' // <--- Mapped RFQ
         };
         const col = map[modal.type];
+
+        // Specific Validation for Vendor Input in RFQ (since it's a datalist)
+        if (modal.type === 'rfq' && form.vendorNameInput) {
+            // Try to find ID from name
+            const v = vendors.find(ven => ven.companyName === form.vendorNameInput);
+            if (v) form.vendorId = v.id;
+            // Note: If no match found, we might want to alert or save as free text? 
+            // For now, let's assume valid selection is required or we save the name if ID missing.
+        }
 
         // Task Linking Logic
         if (col === 'tasks' && form.contextType !== 'Internal') {
@@ -173,11 +161,8 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
         }
     };
 
-    // Dynamic Row Handlers (For Formulation)
-    const handleArrayAdd = (field, emptyObj) => {
-        const current = form[field] || [];
-        setForm({ ...form, [field]: [...current, emptyObj] });
-    };
+    // Helper functions for Dynamic Arrays
+    const handleArrayAdd = (field, emptyObj) => setForm({ ...form, [field]: [...(form[field] || []), emptyObj] });
     const handleArrayChange = (field, idx, subField, val) => {
         const current = [...(form[field] || [])];
         current[idx][subField] = val;
@@ -189,11 +174,7 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
         setForm({ ...form, [field]: current });
     };
 
-    // Payment Terms Handlers (For Orders)
-    const handlePaymentTermAdd = () => {
-        const currentTerms = form.paymentTerms || [];
-        setForm({ ...form, paymentTerms: [...currentTerms, { label: '', percent: 0, status: 'Pending' }] });
-    };
+    const handlePaymentTermAdd = () => setForm({ ...form, paymentTerms: [...(form.paymentTerms || []), { label: '', percent: 0, status: 'Pending' }] });
     const handlePaymentTermChange = (idx, field, value) => {
         const newTerms = [...(form.paymentTerms || [])];
         newTerms[idx][field] = value;
@@ -205,7 +186,6 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
         setForm({ ...form, paymentTerms: newTerms });
     };
 
-    // Toggle for standard Order docs
     const handleRequiredDocToggle = (docName) => {
         const currentDocs = form.docRequirements || {};
         if (currentDocs[docName]) {
@@ -217,10 +197,8 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
         }
     };
 
-    // Helper for ORS Docs Checklist
     const toggleOrsDoc = (doc) => {
         const current = form.requiredDocs || {};
-        // If it exists/is true, toggle to false. If undefined/false, toggle to true.
         setForm({ ...form, requiredDocs: { ...current, [doc]: !current[doc] } });
     };
 
@@ -306,6 +284,7 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
                             {(settings?.taskGroups || []).map(g => <option key={g} value={g}>{g}</option>)}
                         </select>
                     )}
+                    {/* ... (Existing Client/Vendor Context Selectors) ... */}
                     {form.contextType === 'Client' && (
                         <>
                             <select className="w-full p-2 border rounded bg-blue-50" value={form.relatedId || ''} onChange={e => { const c = clients.find(x => x.id === e.target.value); setForm({ ...form, relatedId: c.id, relatedName: c.companyName }); }}>
@@ -455,12 +434,7 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
                                     const isRequired = form.docRequirements?.[doc];
                                     return (
                                         <label key={doc} className={`flex items-center gap-2 text-xs cursor-pointer p-1 rounded border transition-colors ${isRequired ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-slate-200 text-slate-500'}`}>
-                                            <input
-                                                type="checkbox"
-                                                checked={!!isRequired}
-                                                onChange={() => handleRequiredDocToggle(doc)}
-                                                className="rounded text-blue-600 focus:ring-0"
-                                            />
+                                            <input type="checkbox" checked={!!isRequired} onChange={() => handleRequiredDocToggle(doc)} className="rounded text-blue-600 focus:ring-0" />
                                             {doc}
                                         </label>
                                     );
@@ -472,8 +446,6 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
             case 'formulation': return (
                 <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
                     <h3 className="font-bold text-lg">{modal.isEdit ? 'Edit' : 'New'} Formulation</h3>
-
-                    {/* Header Info */}
                     <div className="space-y-3 p-3 bg-slate-50 rounded border border-slate-100">
                         <label className="block text-xs font-bold text-slate-500 uppercase">Linked SKU</label>
                         <select className="w-full p-2 border rounded bg-white" value={form.skuId || ''} onChange={e => setForm({ ...form, skuId: e.target.value })}>
@@ -483,7 +455,6 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
                                 return <option key={s.id} value={s.id}>{p?.name} ({s.variant})</option>
                             })}
                         </select>
-
                         <div className="grid grid-cols-2 gap-4">
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Serving Size</label>
@@ -495,7 +466,6 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
                             </div>
                         </div>
                     </div>
-
                     {/* Ingredients Section */}
                     <div>
                         <div className="flex justify-between items-center mb-2 border-b border-slate-100 pb-1">
@@ -514,24 +484,18 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
                             {(form.ingredients || []).map((ing, i) => (
                                 <div key={i} className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] gap-2 items-center">
                                     <input placeholder="Name" className="text-xs p-2 border rounded" value={ing.name} onChange={e => handleArrayChange('ingredients', i, 'name', e.target.value)} />
-
-                                    {/* Type Selector */}
                                     <select className="text-xs p-2 border rounded bg-white" value={ing.type || 'Active'} onChange={e => handleArrayChange('ingredients', i, 'type', e.target.value)}>
                                         <option value="Active">Active</option>
                                         <option value="Other">Other</option>
                                     </select>
-
                                     <input placeholder="0" type="number" step="any" className="text-xs p-2 border rounded" value={ing.per100g} onChange={e => handleArrayChange('ingredients', i, 'per100g', e.target.value)} />
                                     <input placeholder="0" type="number" step="any" className="text-xs p-2 border rounded" value={ing.perServing} onChange={e => handleArrayChange('ingredients', i, 'perServing', e.target.value)} />
                                     <input placeholder="0" type="number" step="any" className="text-xs p-2 border rounded" value={ing.perSku} onChange={e => handleArrayChange('ingredients', i, 'perSku', e.target.value)} />
-
                                     <button onClick={() => handleArrayDel('ingredients', i)} className="text-slate-400 hover:text-red-500"><Icons.X className="w-4 h-4" /></button>
                                 </div>
                             ))}
-                            {(form.ingredients?.length === 0 || !form.ingredients) && <div className="text-xs text-slate-400 italic p-2 bg-slate-50 rounded">No ingredients added yet.</div>}
                         </div>
                     </div>
-
                     {/* Packaging Section */}
                     <div>
                         <div className="flex justify-between items-center mb-2 border-b border-slate-100 pb-1">
@@ -550,23 +514,9 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
                     </div>
                 </div>
             );
-            case 'user': return (
-                <div className="space-y-4">
-                    <h3 className="font-bold text-lg">{modal.isEdit ? 'Edit' : 'Add'} User</h3>
-                    <input placeholder="Full Name" className="w-full p-2 border rounded" value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} />
-                    <input placeholder="Username" className="w-full p-2 border rounded" value={form.username || ''} onChange={e => setForm({ ...form, username: e.target.value })} />
-                    <input placeholder="Password" type="password" className="w-full p-2 border rounded" value={form.password || ''} onChange={e => setForm({ ...form, password: e.target.value })} />
-                    <select className="w-full p-2 border rounded" value={form.role || ''} onChange={e => setForm({ ...form, role: e.target.value })}>
-                        <option value="Staff">Staff</option>
-                        <option value="Admin">Admin</option>
-                    </select>
-                </div>
-            );
             case 'ors': return (
                 <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-2">
                     <h3 className="font-bold text-lg">{modal.isEdit ? 'Edit' : 'New'} ORS</h3>
-
-                    {/* Row 1: Basics */}
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="text-xs font-bold text-slate-500 uppercase">Date</label>
@@ -577,8 +527,6 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
                             <input className="w-full p-2 border rounded text-sm" placeholder="e.g. PO-2024-001" value={form.poNumber || ''} onChange={e => setForm({ ...form, poNumber: e.target.value })} />
                         </div>
                     </div>
-
-                    {/* Row 2: Vendor & SKU */}
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="text-xs font-bold text-slate-500 uppercase">Vendor</label>
@@ -598,28 +546,24 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
                             </select>
                         </div>
                     </div>
-
-                    {/* Auto-Derived Details Block */}
                     <div className="bg-slate-50 p-3 rounded border border-slate-200 text-sm space-y-2">
                         <div className="grid grid-cols-2 gap-2">
-                            <div><span className="text-slate-400 text-xs">Product:</span> <span className="font-medium">{orsDerived.productName}</span></div>
-                            <div><span className="text-slate-400 text-xs">Variant:</span> <span className="font-medium">{orsDerived.variant}</span></div>
-                            <div><span className="text-slate-400 text-xs">Pack:</span> <span className="font-medium">{orsDerived.pack}</span></div>
-                            <div><span className="text-slate-400 text-xs">Formulation:</span> <span className="font-medium">{orsDerived.formulationName}</span></div>
+                            <div><span className="text-slate-400 text-xs">Product:</span> <span className="font-medium">{derivedDetails.productName}</span></div>
+                            <div><span className="text-slate-400 text-xs">Variant:</span> <span className="font-medium">{derivedDetails.variant}</span></div>
+                            <div><span className="text-slate-400 text-xs">Pack:</span> <span className="font-medium">{derivedDetails.pack}</span></div>
+                            <div><span className="text-slate-400 text-xs">Formulation:</span> <span className="font-medium">{derivedDetails.formulationName}</span></div>
                         </div>
-                        {orsDerived.packagingMaterial.length > 0 && (
+                        {derivedDetails.packagingMaterial.length > 0 && (
                             <div className="pt-2 border-t border-slate-200">
                                 <span className="text-slate-400 text-xs block mb-1">Packing Material (Linked):</span>
                                 <div className="flex flex-wrap gap-1">
-                                    {orsDerived.packagingMaterial.map((pm, i) => (
+                                    {derivedDetails.packagingMaterial.map((pm, i) => (
                                         <span key={i} className="text-[10px] bg-white border px-1.5 py-0.5 rounded text-slate-600">{pm.item} ({pm.qty})</span>
                                     ))}
                                 </div>
                             </div>
                         )}
                     </div>
-
-                    {/* Row 3: Commercials */}
                     <div className="grid grid-cols-3 gap-3">
                         <div>
                             <label className="text-xs font-bold text-slate-500 uppercase">Quantity</label>
@@ -629,15 +573,12 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
                             <label className="text-xs font-bold text-slate-500 uppercase">Cost Per Unit</label>
                             <div className="flex">
                                 <select className="p-2 border rounded-l bg-slate-100 text-sm" value={form.currency || 'INR'} onChange={e => setForm({ ...form, currency: e.target.value })}>
-                                    <option>INR</option>
-                                    <option>USD</option>
+                                    <option>INR</option><option>USD</option>
                                 </select>
                                 <input type="number" step="0.01" className="w-full p-2 border rounded-r text-sm" placeholder="0.00" value={form.costPerUnit || ''} onChange={e => setForm({ ...form, costPerUnit: e.target.value })} />
                             </div>
                         </div>
                     </div>
-
-                    {/* Row 4: Terms */}
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="text-xs font-bold text-slate-500 uppercase">Cost Terms</label>
@@ -653,8 +594,6 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
                             </select>
                         </div>
                     </div>
-
-                    {/* Row 5: Logistics */}
                     <div className="grid grid-cols-3 gap-3">
                         <div>
                             <label className="text-xs font-bold text-slate-500 uppercase">Lead Time (Wks)</label>
@@ -666,36 +605,157 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
                         </div>
                         <div>
                             <label className="text-xs font-bold text-slate-500 uppercase">Country of Sale</label>
-                            <input
-                                list="countries"
-                                className="w-full p-2 border rounded text-sm"
-                                value={form.countryOfSale || ''}
-                                onChange={e => setForm({ ...form, countryOfSale: e.target.value })}
-                                placeholder="Type to filter..."
-                            />
+                            <input list="countries" className="w-full p-2 border rounded text-sm" value={form.countryOfSale || ''} onChange={e => setForm({ ...form, countryOfSale: e.target.value })} placeholder="Type to filter..." />
                             <datalist id="countries">
                                 {COUNTRIES.map(c => <option key={c} value={c} />)}
                             </datalist>
                         </div>
                     </div>
-
-                    {/* Documents Checklist */}
                     <div className="border-t pt-3">
                         <label className="text-xs font-bold text-slate-500 uppercase block mb-2">Required Documents</label>
                         <div className="grid grid-cols-2 gap-2">
                             {ORS_REQUIRED_DOCS.map(doc => (
                                 <label key={doc} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-slate-50 p-1 rounded">
-                                    <input
-                                        type="checkbox"
-                                        checked={!!(form.requiredDocs || {})[doc]}
-                                        onChange={() => toggleOrsDoc(doc)}
-                                        className="rounded text-blue-600 focus:ring-0"
-                                    />
+                                    <input type="checkbox" checked={!!(form.requiredDocs || {})[doc]} onChange={() => toggleOrsDoc(doc)} className="rounded text-blue-600 focus:ring-0" />
                                     {doc}
                                 </label>
                             ))}
                         </div>
                     </div>
+                </div>
+            );
+            case 'rfq': return (
+                <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-2">
+                    <h3 className="font-bold text-lg">{modal.isEdit ? 'Edit' : 'New'} RFQ</h3>
+
+                    {/* Request Type Switch */}
+                    <div className="flex gap-4 p-1 bg-slate-100 rounded">
+                        <button
+                            className={`flex-1 py-1.5 text-sm font-medium rounded ${form.requestType === 'Product SKU' ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}
+                            onClick={() => setForm({ ...form, requestType: 'Product SKU', customProductName: '', customDescription: '' })}
+                        >
+                            Product SKU
+                        </button>
+                        <button
+                            className={`flex-1 py-1.5 text-sm font-medium rounded ${form.requestType === 'Custom' ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}
+                            onClick={() => setForm({ ...form, requestType: 'Custom', skuId: '' })}
+                        >
+                            Custom
+                        </button>
+                    </div>
+
+                    {/* Conditional Fields */}
+                    {form.requestType === 'Product SKU' ? (
+                        <>
+                            <div className="space-y-1">
+                                <label className="text-xs font-bold text-slate-500 uppercase">Select SKU</label>
+                                <select className="w-full p-2 border rounded text-sm" value={form.skuId || ''} onChange={e => setForm({ ...form, skuId: e.target.value })}>
+                                    <option value="">Select SKU...</option>
+                                    {skus.map(s => {
+                                        const p = products.find(x => x.id === s.productId);
+                                        return <option key={s.id} value={s.id}>{p?.name} ({s.variant})</option>
+                                    })}
+                                </select>
+                            </div>
+
+                            {/* Auto-Populated Info Block */}
+                            {form.skuId && (
+                                <div className="bg-blue-50 p-3 rounded border border-blue-100 text-sm space-y-2">
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div><span className="text-blue-400 text-xs">Product:</span> <span className="font-medium text-blue-900">{derivedDetails.productName}</span></div>
+                                        <div><span className="text-blue-400 text-xs">Variant:</span> <span className="font-medium text-blue-900">{derivedDetails.variant}</span></div>
+                                        <div><span className="text-blue-400 text-xs">Pack:</span> <span className="font-medium text-blue-900">{derivedDetails.pack}</span></div>
+                                        <div><span className="text-blue-400 text-xs">Formulation:</span> <span className="font-medium text-blue-900">{derivedDetails.formulationName}</span></div>
+                                    </div>
+                                    {derivedDetails.packagingMaterial.length > 0 && (
+                                        <div className="pt-2 border-t border-blue-200">
+                                            <span className="text-blue-400 text-xs block mb-1">Packaging (Available):</span>
+                                            <div className="flex flex-wrap gap-1">
+                                                {derivedDetails.packagingMaterial.map((pm, i) => (
+                                                    <span key={i} className="text-[10px] bg-white border border-blue-200 px-1.5 py-0.5 rounded text-blue-700">{pm.item}</span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </>
+                    ) : (
+                        <>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase">Product Name</label>
+                                <input className="w-full p-2 border rounded text-sm" placeholder="e.g. New Whey Formula" value={form.customProductName || ''} onChange={e => setForm({ ...form, customProductName: e.target.value })} />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase">Description / Requirements</label>
+                                <textarea rows="3" className="w-full p-2 border rounded text-sm" placeholder="Describe the item specs..." value={form.customDescription || ''} onChange={e => setForm({ ...form, customDescription: e.target.value })} />
+                            </div>
+                        </>
+                    )}
+
+                    {/* Common Fields */}
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase">Quantity</label>
+                            <input type="number" className="w-full p-2 border rounded text-sm" placeholder="Qty" value={form.qty || ''} onChange={e => setForm({ ...form, qty: e.target.value })} />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase">Target Price</label>
+                            <div className="flex">
+                                <select className="p-2 border rounded-l bg-slate-100 text-sm" value={form.currency || 'INR'} onChange={e => setForm({ ...form, currency: e.target.value })}>
+                                    <option>INR</option><option>USD</option>
+                                </select>
+                                <input type="number" className="w-full p-2 border rounded-r text-sm" placeholder="0.00" value={form.targetPrice || ''} onChange={e => setForm({ ...form, targetPrice: e.target.value })} />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase">Country of Sale</label>
+                            <input
+                                list="countries"
+                                className="w-full p-2 border rounded text-sm"
+                                value={form.countryOfSale || ''}
+                                onChange={e => setForm({ ...form, countryOfSale: e.target.value })}
+                                placeholder="Select Country..."
+                            />
+                            <datalist id="countries">
+                                {COUNTRIES.map(c => <option key={c} value={c} />)}
+                            </datalist>
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase">Vendor</label>
+                            <input
+                                list="vendor-list"
+                                className="w-full p-2 border rounded text-sm"
+                                value={form.vendorNameInput || (vendors.find(v => v.id === form.vendorId)?.companyName || '')}
+                                onChange={e => {
+                                    // Handle input change and auto-match ID
+                                    const val = e.target.value;
+                                    setForm({ ...form, vendorNameInput: val });
+                                    const match = vendors.find(v => v.companyName === val);
+                                    if (match) setForm(prev => ({ ...prev, vendorId: match.id, vendorNameInput: val }));
+                                }}
+                                placeholder="Type to filter..."
+                            />
+                            <datalist id="vendor-list">
+                                {vendors.map(v => <option key={v.id} value={v.companyName} />)}
+                            </datalist>
+                        </div>
+                    </div>
+                </div>
+            );
+            case 'user': return (
+                <div className="space-y-4">
+                    <h3 className="font-bold text-lg">{modal.isEdit ? 'Edit' : 'Add'} User</h3>
+                    <input placeholder="Full Name" className="w-full p-2 border rounded" value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} />
+                    <input placeholder="Username" className="w-full p-2 border rounded" value={form.username || ''} onChange={e => setForm({ ...form, username: e.target.value })} />
+                    <input placeholder="Password" type="password" className="w-full p-2 border rounded" value={form.password || ''} onChange={e => setForm({ ...form, password: e.target.value })} />
+                    <select className="w-full p-2 border rounded" value={form.role || ''} onChange={e => setForm({ ...form, role: e.target.value })}>
+                        <option value="Staff">Staff</option>
+                        <option value="Admin">Admin</option>
+                    </select>
                 </div>
             );
             default: return null;

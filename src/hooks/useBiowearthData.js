@@ -7,11 +7,11 @@ export const useBiowearthData = () => {
     const [loading, setLoading] = useState(true);
     const [currentUser, setCurrentUser] = useState(null);
 
-    // Data State - ADDED 'rfqs'
+    // Data State - Ensure 'ors' and 'rfqs' are initialized
     const [data, setData] = useState({
         products: [], skus: [], vendors: [], clients: [], contacts: [],
         quotesReceived: [], quotesSent: [], tasks: [], orders: [], formulations: [],
-        ors: [], rfqs: [], // <--- ADDED THESE
+        ors: [], rfqs: [], // <--- IMPORTANT: Initialized here
         userProfiles: [], settings: {}
     });
 
@@ -39,9 +39,13 @@ export const useBiowearthData = () => {
                     onSnapshot(collection(db, path, 'quotesSent'), s => setData(p => ({ ...p, quotesSent: s.docs.map(d => ({ id: d.id, ...d.data() })) }))),
                     onSnapshot(collection(db, path, 'tasks'), s => setData(p => ({ ...p, tasks: s.docs.map(d => ({ id: d.id, ...d.data() })) }))),
                     onSnapshot(collection(db, path, 'orders'), s => setData(p => ({ ...p, orders: s.docs.map(d => ({ id: d.id, ...d.data() })) }))),
-                    // NEW LISTENER ADDED BELOW
                     onSnapshot(collection(db, path, 'formulations'), s => setData(p => ({ ...p, formulations: s.docs.map(d => ({ id: d.id, ...d.data() })) }))),
+
+                    // --- NEW LISTENERS ADDED HERE ---
                     onSnapshot(collection(db, path, 'ors'), s => setData(p => ({ ...p, ors: s.docs.map(d => ({ id: d.id, ...d.data() })) }))),
+                    onSnapshot(collection(db, path, 'rfqs'), s => setData(p => ({ ...p, rfqs: s.docs.map(d => ({ id: d.id, ...d.data() })) }))),
+                    // --------------------------------
+
                     onSnapshot(collection(db, path, 'users'), s => {
                         const users = s.docs.map(d => ({ id: d.id, ...d.data() }));
                         setData(p => ({ ...p, userProfiles: users }));
@@ -57,6 +61,7 @@ export const useBiowearthData = () => {
                             hasData = true;
                         });
                         if (!hasData) {
+                            // Default settings if empty
                             const defaults = {
                                 formats: ['Powder', 'Liquid', 'Tablet', 'Capsule', 'Gummy', 'Sachet'],
                                 units: ['g', 'kg', 'ml', 'L', 'pcs'],
