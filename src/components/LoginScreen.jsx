@@ -36,7 +36,6 @@ export const LoginScreen = ({ userProfiles, onLogin }) => {
                     {error && <div className="text-red-500 text-xs text-center">{error}</div>}
                     <Button className="w-full" onClick={handleLogin}>Login</Button>
                 </form>
-                <div className="mt-6 text-center text-xs text-slate-400">Default: admin / password123</div>
             </Card>
         </div>
     );

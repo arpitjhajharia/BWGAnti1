@@ -1,3 +1,4 @@
+import logo from './assets/logo.png';
 import React, { useState } from 'react';
 import { Icons } from './components/ui/Icons';
 import { useBiowearthData } from './hooks/useBiowearthData';
@@ -77,9 +78,13 @@ function App() {
           <button onClick={() => setIsSidebarOpen(true)} className="p-2 rounded hover:bg-slate-800 transition-colors text-slate-300 hover:text-white">
             <Icons.Menu className="w-6 h-6" />
           </button>
+          {/* --- BRANDING / LOGO --- */}
           <div className="flex items-center gap-3 select-none cursor-pointer" onClick={() => setActiveTab('dashboard')}>
-            <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center font-bold text-lg">B</div>
-            <span className="font-bold tracking-tight text-lg hidden md:block">Biowearth OS</span>
+            <img
+              src={logo}
+              alt="Biowearth Dashboard"
+              className="h-12 w-auto object-contain" /* Adjust h-10 to h-12 if you want it bigger */
+            />
           </div>
         </div>
         <div className="flex items-center gap-4">
