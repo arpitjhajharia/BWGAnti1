@@ -112,7 +112,7 @@ export const ORSMaster = ({ data, actions, setModal }) => {
 
             // --- Documents Checklist ---
             const docsList = Object.entries(item.requiredDocs || {})
-                .filter(([_, required]) => required)
+                .filter(([, required]) => required)
                 .map(([docName]) => [docName, "Required"]);
 
             if (docsList.length > 0) {

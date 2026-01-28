@@ -82,10 +82,10 @@ export { InlineTask }; // Exporting this so other modules can use it
 
 // --- MAIN COMPONENT: TASK BOARD ---
 export const TaskBoard = ({ data, actions, setModal }) => {
-    const { tasks, userProfiles } = data;
+    const { tasks } = data;
     const [viewMode, setViewMode] = useState('list');
-    const [filterPriority, setFilterPriority] = useState('All');
-    const [sort, setSort] = useState({ key: 'dueDate', dir: 'asc' });
+    const [filterPriority] = useState('All');
+    const [sort] = useState({ key: 'dueDate', dir: 'asc' });
     const [localSearch, setLocalSearch] = useState('');
     const [currentDate, setCurrentDate] = useState(new Date());
 

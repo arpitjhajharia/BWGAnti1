@@ -4,7 +4,7 @@ import autoTable from 'jspdf-autotable'; // Correct import for Vite
 import { Icons } from '../ui/Icons';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
-import { formatDate, formatMoney } from '../../utils/helpers';
+import { formatDate } from '../../utils/helpers';
 
 export const RFQMaster = ({ data, actions, setModal }) => {
     // Added 'formulations' to destructuring

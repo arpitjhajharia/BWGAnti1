@@ -11,8 +11,8 @@ export const Formulations = ({ data, actions, setModal, targetFormulationId }) =
     // Auto-expand if a specific ID is targeted (from Product Module)
     useEffect(() => {
         if (targetFormulationId) {
-            setExpandedId(targetFormulationId);
-            // Scroll to element could go here
+            // Fix: Wrap in setTimeout to avoid synchronous state update warning
+            setTimeout(() => setExpandedId(targetFormulationId), 0);
         }
     }, [targetFormulationId]);
 

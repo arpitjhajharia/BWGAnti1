@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import React from 'react';
 
 const Icon = ({ path, className = "w-4 h-4" }) => (

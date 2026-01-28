@@ -7,7 +7,6 @@ import { formatMoney } from '../../utils/helpers';
 import { REQUIRED_DOCS, ORS_REQUIRED_DOCS, COUNTRIES } from '../../utils/constants';
 
 export const AppModal = ({ modal, setModal, data, actions }) => {
-    if (!modal.open) return null;
 
     const { products, skus, vendors, clients, userProfiles, quotesReceived, settings, formulations = [] } = data;
     const [form, setForm] = useState(modal.data || {});
@@ -88,6 +87,7 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
             const skuCode = `${productName}-${variant}-${packSize}${unit}-${packType}-${flavour}`.toUpperCase().replace(/-+/g, '-').replace(/-$/, '');
             setForm(f => f.name === skuCode ? f : { ...f, name: skuCode });
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [form.variant, form.packSize, form.unit, form.packType, form.flavour, modal.type, modal.isEdit, settings]);
 
     // Derived Calculations (Shared for ORS & RFQ when SKU is selected)
@@ -250,6 +250,7 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
         setForm({ ...form, requiredDocs: { ...current, [doc]: !current[doc] } });
     };
 
+    if (!modal.open) return null;
     // --- RENDER CONTENT SWITCHER ---
     const renderContent = () => {
         switch (modal.type) {
@@ -481,7 +482,7 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
                     )}
                 </div>
             );
-            case 'order':
+            case 'order': {
                 const totalMilestonePercent = (form.paymentTerms || []).reduce((sum, t) => sum + (parseFloat(t.percent) || 0), 0);
                 const percentError = Math.abs(totalMilestonePercent - 100) > 0.1;
 
@@ -551,6 +552,7 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
                         </div>
                     </div>
                 );
+            }
             case 'formulation': return (
                 <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
                     <h3 className="font-bold text-lg">{modal.isEdit ? 'Edit' : 'New'} Formulation</h3>

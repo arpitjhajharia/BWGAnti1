@@ -7,7 +7,6 @@ import { InlineTask } from '../modules/TaskBoard';
 import { formatMoney, formatDate } from '../../utils/helpers';
 
 export const DetailDashboard = ({ detailView, setDetailView, data, actions, setModal, userProfiles }) => {
-    if (!detailView.open) return null;
 
     const { type, data: companyData } = detailView;
     const { contacts, tasks, quotesReceived, quotesSent, orders, products, skus } = data;
@@ -36,6 +35,7 @@ export const DetailDashboard = ({ detailView, setDetailView, data, actions, setM
     const totalOrderValue = relatedOrders.reduce((acc, o) => acc + (o.amount || 0), 0);
 
     // Group Quotes (Updated: Now groups for BOTH Vendors and Clients)
+    // eslint-disable-next-line react-hooks/preserve-manual-memoization
     const quoteGroups = useMemo(() => {
         // --- REMOVED THE LINE BELOW ---
         // if (isVendor) return relatedQuotes.map(q => ({ skuId: q.skuId, quotes: [q] }));
@@ -58,6 +58,8 @@ export const DetailDashboard = ({ detailView, setDetailView, data, actions, setM
 
         return Object.keys(groups).map(skuId => ({ skuId, quotes: groups[skuId] }));
     }, [relatedQuotes]); // Removed isVendor dependency
+
+    if (!detailView.open) return null;
 
     // --- ACTION HANDLERS ---
 

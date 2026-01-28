@@ -4,6 +4,19 @@ import { Icons } from '../ui/Icons';
 import { Card } from '../ui/Card';
 import { formatDate, formatMoney } from '../../utils/helpers';
 
+const StatCard = ({ title, value, icon: Icon, color }) => (
+    <Card className="p-5 flex items-center justify-between">
+        <div>
+            <p className="text-sm text-slate-500 font-medium mb-1">{title}</p>
+            <h3 className="text-2xl font-bold text-slate-800">{value}</h3>
+        </div>
+        <div className={`p-3 bg-${color}-50 text-${color}-600 rounded-lg`}>
+            {/* NOTICE: We are using <Icon /> here, matching the prop name 'icon: Icon' */}
+            <Icon className="w-6 h-6" />
+        </div>
+    </Card>
+);
+
 export const DashboardOverview = ({ data, actions, setActiveTab }) => {
     const { products, clients, tasks, quotesSent } = data;
 
@@ -12,18 +25,6 @@ export const DashboardOverview = ({ data, actions, setActiveTab }) => {
 
     // Prepare Chart Data
     const chartData = quotesSent.slice(0, 7).map(q => ({ name: q.quoteId, value: q.sellingPrice * q.moq }));
-
-    const StatCard = ({ title, value, icon: I, color }) => (
-        <Card className="p-5 flex items-center justify-between">
-            <div>
-                <p className="text-sm text-slate-500 font-medium mb-1">{title}</p>
-                <h3 className="text-2xl font-bold text-slate-800">{value}</h3>
-            </div>
-            <div className={`p-3 bg-${color}-50 text-${color}-600 rounded-lg`}>
-                <I className="w-6 h-6" />
-            </div>
-        </Card>
-    );
 
     return (
         <div className="space-y-6">

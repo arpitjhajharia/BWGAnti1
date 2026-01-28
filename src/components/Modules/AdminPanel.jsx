@@ -35,11 +35,10 @@ const SettingsCard = ({ title, settingKey, items, actions }) => {
 };
 
 export const AdminPanel = ({ currentUser, data, actions, setModal }) => {
-    if (currentUser.role !== 'Admin') return <div className="p-10 text-center text-red-500">Access Denied</div>;
 
     const [subTab, setSubTab] = useState('users');
     const { userProfiles, settings } = data;
-
+    if (currentUser.role !== 'Admin') return <div className="p-10 text-center text-red-500">Access Denied</div>;
     return (
         <div className="space-y-6">
             <div className="flex gap-4 border-b border-slate-200 pb-2">
