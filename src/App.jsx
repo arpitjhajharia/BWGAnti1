@@ -1,4 +1,3 @@
-import logo from './assets/logo.png';
 import React, { useState } from 'react';
 import { Icons } from './components/ui/Icons';
 import { useBiowearthData } from './hooks/useBiowearthData';
@@ -81,9 +80,9 @@ function App() {
           {/* --- BRANDING / LOGO --- */}
           <div className="flex items-center gap-3 select-none cursor-pointer" onClick={() => setActiveTab('dashboard')}>
             <img
-              src={logo}
+              src={`${import.meta.env.BASE_URL}logo.png`}
               alt="Biowearth Dashboard"
-              className="h-12 w-auto object-contain" /* Adjust h-10 to h-12 if you want it bigger */
+              className="h-20 w-auto object-contain"
             />
           </div>
         </div>
