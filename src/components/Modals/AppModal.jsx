@@ -932,6 +932,43 @@ export const AppModal = ({ modal, setModal, data, actions }) => {
                     </select>
                 </div>
             );
+            case 'contact': return (
+                <div className="space-y-4">
+                    <h3 className="font-bold text-lg">{modal.isEdit ? 'Edit' : 'New'} Contact</h3>
+                    <input
+                        placeholder="Name"
+                        className="w-full p-2 border rounded"
+                        value={form.name || ''}
+                        onChange={e => setForm({ ...form, name: e.target.value })}
+                    />
+                    <input
+                        placeholder="Role / Designation"
+                        className="w-full p-2 border rounded"
+                        value={form.role || ''}
+                        onChange={e => setForm({ ...form, role: e.target.value })}
+                    />
+                    <div className="grid grid-cols-2 gap-4">
+                        <input
+                            placeholder="Email"
+                            className="p-2 border rounded"
+                            value={form.email || ''}
+                            onChange={e => setForm({ ...form, email: e.target.value })}
+                        />
+                        <input
+                            placeholder="Phone"
+                            className="p-2 border rounded"
+                            value={form.phone || ''}
+                            onChange={e => setForm({ ...form, phone: e.target.value })}
+                        />
+                    </div>
+                    <input
+                        placeholder="LinkedIn Profile URL"
+                        className="w-full p-2 border rounded"
+                        value={form.linkedin || ''}
+                        onChange={e => setForm({ ...form, linkedin: e.target.value })}
+                    />
+                </div>
+            );
             default: return null;
         }
     };

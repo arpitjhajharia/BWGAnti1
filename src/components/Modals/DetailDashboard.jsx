@@ -35,9 +35,11 @@ export const DetailDashboard = ({ detailView, setDetailView, data, actions, setM
     }
     const totalOrderValue = relatedOrders.reduce((acc, o) => acc + (o.amount || 0), 0);
 
-    // Group Quotes
+    // Group Quotes (Updated: Now groups for BOTH Vendors and Clients)
     const quoteGroups = useMemo(() => {
-        if (isVendor) return relatedQuotes.map(q => ({ skuId: q.skuId, quotes: [q] }));
+        // --- REMOVED THE LINE BELOW ---
+        // if (isVendor) return relatedQuotes.map(q => ({ skuId: q.skuId, quotes: [q] }));
+
         const groups = {};
         relatedQuotes.forEach(q => {
             if (!groups[q.skuId]) groups[q.skuId] = [];
@@ -47,14 +49,15 @@ export const DetailDashboard = ({ detailView, setDetailView, data, actions, setM
         // Sort quotes within groups by createdAt descending (Latest first)
         Object.keys(groups).forEach(key => {
             groups[key].sort((a, b) => {
-                const dateA = a.createdAt?.seconds || 0;
-                const dateB = b.createdAt?.seconds || 0;
+                // Robust date handling for Firestore timestamps vs Strings
+                const dateA = a.createdAt?.seconds ? a.createdAt.seconds : new Date(a.createdAt || 0).getTime();
+                const dateB = b.createdAt?.seconds ? b.createdAt.seconds : new Date(b.createdAt || 0).getTime();
                 return dateB - dateA;
             });
         });
 
         return Object.keys(groups).map(skuId => ({ skuId, quotes: groups[skuId] }));
-    }, [relatedQuotes, isVendor]);
+    }, [relatedQuotes]); // Removed isVendor dependency
 
     // --- ACTION HANDLERS ---
 
@@ -116,15 +119,57 @@ export const DetailDashboard = ({ detailView, setDetailView, data, actions, setM
                     <Card className="p-5">
                         <h3 className="font-bold text-slate-700 mb-4 flex gap-2 items-center text-sm uppercase tracking-wide"><Icons.Contact className="w-4 h-4 text-slate-400" /> Key People</h3>
                         {relatedContacts.map(c => (
-                            <div key={c.id} className="p-3 bg-slate-50 mb-2 rounded-lg border border-slate-100 flex justify-between items-center group hover:border-blue-200 transition-colors">
+                            <div
+                                key={c.id}
+                                // 1. Clicking the card opens the Edit Modal
+                                onClick={() => setModal({ open: true, type: 'contact', data: c, isEdit: true })}
+                                className="p-3 bg-slate-50 mb-2 rounded-lg border border-slate-100 flex justify-between items-center group hover:border-blue-200 hover:bg-blue-50/50 transition-all cursor-pointer relative"
+                            >
                                 <div>
-                                    <div className="font-bold text-slate-800 text-sm">{c.name}</div>
+                                    <div className="font-bold text-slate-800 text-sm group-hover:text-blue-700 transition-colors">
+                                        {c.name}
+                                    </div>
                                     <div className="text-xs text-slate-500">{c.role}</div>
                                 </div>
+
                                 <div className="flex gap-2 opacity-60 group-hover:opacity-100 transition-opacity">
-                                    {c.email && <a href={`mailto:${c.email}`} className="p-1.5 bg-white rounded-full text-blue-500 shadow-sm hover:text-blue-700"><Icons.Mail className="w-3.5 h-3.5" /></a>}
-                                    {c.phone && <a href={`tel:${c.phone}`} className="p-1.5 bg-white rounded-full text-green-500 shadow-sm hover:text-green-700"><Icons.Phone className="w-3.5 h-3.5" /></a>}
-                                    {c.linkedin && <a href={c.linkedin} target="_blank" className="p-1.5 bg-white rounded-full text-blue-700 shadow-sm hover:text-blue-900"><Icons.Linkedin className="w-3.5 h-3.5" /></a>}
+                                    {/* 2. Action Buttons use stopPropagation to avoid opening the modal */}
+                                    {c.email && (
+                                        <a
+                                            href={`mailto:${c.email}`}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="p-1.5 bg-white rounded-full text-blue-500 shadow-sm hover:text-blue-700 hover:scale-110 transition-transform"
+                                            title="Send Email"
+                                        >
+                                            <Icons.Mail className="w-3.5 h-3.5" />
+                                        </a>
+                                    )}
+                                    {c.phone && (
+                                        <a
+                                            href={`tel:${c.phone}`}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="p-1.5 bg-white rounded-full text-green-500 shadow-sm hover:text-green-700 hover:scale-110 transition-transform"
+                                            title="Call"
+                                        >
+                                            <Icons.Phone className="w-3.5 h-3.5" />
+                                        </a>
+                                    )}
+                                    {c.linkedin && (
+                                        <a
+                                            href={c.linkedin}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="p-1.5 bg-white rounded-full text-blue-700 shadow-sm hover:text-blue-900 hover:scale-110 transition-transform"
+                                            title="Open LinkedIn"
+                                        >
+                                            <Icons.Linkedin className="w-3.5 h-3.5" />
+                                        </a>
+                                    )}
+                                    {/* Visual cue that the card is editable */}
+                                    <div className="p-1.5 text-slate-300 group-hover:text-blue-400">
+                                        <Icons.Edit className="w-3.5 h-3.5" />
+                                    </div>
                                 </div>
                             </div>
                         ))}

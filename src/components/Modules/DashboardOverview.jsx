@@ -39,12 +39,35 @@ export const DashboardOverview = ({ data, actions, setActiveTab }) => {
                     <h3 className="font-bold text-slate-700 mb-4">Recent Sales Activity</h3>
                     <div className="h-64">
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={chartData}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                <XAxis dataKey="name" fontSize={12} tickLine={false} axisLine={false} />
-                                <YAxis fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `₹${v / 1000}k`} />
-                                <Tooltip />
-                                <Bar dataKey="value" fill="#4f46e5" radius={[4, 4, 0, 0]} />
+                            <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                                <XAxis
+                                    dataKey="name"
+                                    fontSize={10}
+                                    tickLine={false}
+                                    axisLine={false}
+                                    tick={{ fill: '#64748b' }}
+                                    dy={10}
+                                />
+                                <YAxis
+                                    fontSize={10}
+                                    tickLine={false}
+                                    axisLine={false}
+                                    tickFormatter={(v) => `₹${v / 1000}k`}
+                                    tick={{ fill: '#64748b' }}
+                                />
+                                {/* FIX 1: Make the hover cursor transparent so it doesn't show the huge grey box */}
+                                <Tooltip
+                                    cursor={{ fill: 'transparent' }}
+                                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                />
+                                {/* FIX 2: Set barSize to prevent single bars from looking strange */}
+                                <Bar
+                                    dataKey="value"
+                                    fill="#4f46e5"
+                                    radius={[4, 4, 0, 0]}
+                                    barSize={40}
+                                />
                             </BarChart>
                         </ResponsiveContainer>
                     </div>
