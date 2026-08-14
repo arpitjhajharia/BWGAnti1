@@ -3,6 +3,7 @@ import { Icons } from '../ui/Icons';
 import { Button } from '../ui/Button';
 import { FilterHeader } from '../shared/FilterHeader';
 import { formatDate } from '../../utils/helpers';
+import { exportClientsToExcel } from '../../utils/exportClients';
 
 const getRelativeDays = (dateStr) => {
     if (!dateStr) return '';
@@ -151,6 +152,21 @@ export const CompanyMaster = ({ type, data, actions, setModal, setDetailView, cu
         });
     }, [enrichedData, colFilters, sort, type]);
 
+    const [exporting, setExporting] = useState(false);
+
+    const handleExport = async () => {
+        if (exporting) return;
+        setExporting(true);
+        try {
+            await exportClientsToExcel(filteredData, contacts);
+        } catch (err) {
+            console.error('Client export failed', err);
+            alert('Export failed. Please try again.');
+        } finally {
+            setExporting(false);
+        }
+    };
+
     const handleSort = (key) => {
         setSort(prev => ({ key, dir: prev.key === key && prev.dir === 'asc' ? 'desc' : 'asc' }));
     };
@@ -270,6 +286,17 @@ export const CompanyMaster = ({ type, data, actions, setModal, setDetailView, cu
                             </div>
                         )}
                     </div>
+                    {!isVendor && (
+                        <button
+                            onClick={handleExport}
+                            disabled={exporting || filteredData.length === 0}
+                            title="Export the current view to Excel"
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-slate-300 bg-white shadow-sm text-[11px] font-bold uppercase tracking-wider text-slate-600 transition-all hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            <Icons.Download className="w-3.5 h-3.5" />
+                            <span>{exporting ? 'Exporting...' : 'Export'}</span>
+                        </button>
+                    )}
                     <Button icon={Icons.Plus} onClick={() => setModal({ open: true, type })} variant="primary" className="shadow-sm uppercase text-[11px] tracking-widest px-5">New</Button>
                 </div>
             </div>
